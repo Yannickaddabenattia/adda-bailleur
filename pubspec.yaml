@@ -1,0 +1,78 @@
+name: adda_location
+description: "Adda Location - Gestion locale de locations immobilières."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Stockage local chiffré
+  flutter_secure_storage: ^9.2.4
+  hive_ce: ^2.11.3
+  hive_ce_flutter: ^2.3.1
+  path_provider: ^2.1.5
+
+  # State management
+  provider: ^6.1.2
+
+  # Utilitaires
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  intl: ^0.20.2
+  email_validator: ^3.0.0
+
+  # États des lieux / photos / signatures
+  signature: ^5.5.0
+  image_picker: ^1.1.2
+
+  # PDF (quittances, états des lieux)
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  share_plus: ^10.1.2
+
+  # Sauvegarde chiffrée (export/import)
+  pointycastle: ^3.9.1
+  file_picker: ^8.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  hive_ce_generator: ^1.9.2
+  build_runner: ^2.4.14
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/logo_square.png
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/logo_adaptive_fg.png
+  remove_alpha_ios: true
+  macos:
+    generate: true
+    image_path: assets/images/logo_square.png
+
+flutter_native_splash:
+  color: "#1E3A8A"
+  image: assets/images/logo_square.png
+  android: true
+  ios: true
+  fullscreen: false
+  android_12:
+    color: "#1E3A8A"
+    image: assets/images/logo_square.png
