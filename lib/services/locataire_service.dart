@@ -19,6 +19,17 @@ class LocataireService extends ChangeNotifier {
     return all.where((l) => l.logementIds.contains(logementId)).toList();
   }
 
+  List<Locataire> get actuels => all.where((l) => !l.isArchived).toList();
+
+  List<Locataire> get anciens {
+    final list = all.where((l) => l.isArchived).toList()
+      ..sort((a, b) => (b.dateSortie ?? b.createdAt)
+          .compareTo(a.dateSortie ?? a.createdAt));
+    return list;
+  }
+
+  List<Locataire> get futurs => all.where((l) => l.isFutur).toList();
+
   Future<Locataire> add(Locataire locataire) async {
     await LocalDatabase.locatairesBox.put(locataire.id, locataire);
     notifyListeners();

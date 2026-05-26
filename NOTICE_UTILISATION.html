@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>ADDA Bailleur — Notice d'utilisation</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="-" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">ADDA Bailleur — Notice d'utilisation</h1>
+<p class="subtitle">Guide complet pas-à-pas</p>
+<p class="date">Édition 2026</p>
+</header>
+<nav id="TOC" role="doc-toc">
+
+</nav>
+<h1 id="avant-propos">Avant-propos</h1>
+<p>Bienvenue dans <strong>ADDA Bailleur</strong>, l’application de
+gestion locative qui te permet, depuis ton téléphone, ta tablette ou ton
+ordinateur, de tenir toute ta gestion immobilière sans dépendre d’un
+service en ligne.</p>
+<p>Cette notice a un objectif simple : <strong>t’expliquer chaque écran
+et chaque bouton</strong>, dans l’ordre où tu vas les rencontrer, avec
+des conseils pratiques et des avertissements quand c’est nécessaire.
+Aucune connaissance technique préalable n’est requise.</p>
+<h2 id="pourquoi-cette-app">Pourquoi cette app ?</h2>
+<ul>
+<li><strong>100 % local</strong> : tes données ne quittent jamais ton
+appareil. Aucun serveur, aucun cloud forcé, aucune fuite possible.</li>
+<li><strong>Chiffrée AES-256</strong> : même si quelqu’un mettait la
+main sur ton téléphone et accédait au stockage, il ne pourrait rien lire
+sans la clé unique générée à l’installation.</li>
+<li><strong>Multi-plateforme</strong> : la même app sur Mac, iPhone,
+iPad, Android, Linux. Toutes tes données sont identiques d’un appareil à
+l’autre via un système de <strong>sauvegarde manuelle</strong> que tu
+décides quand activer.</li>
+<li><strong>Conforme à la loi</strong> : quittances loi ALUR, EDL
+conformes à l’article 3-2 de la loi 89-462, contrats de bail conformes
+Code civil (articles 1708 à 1762), mentions RGPD intégrées aux
+documents.</li>
+</ul>
+<h2 id="comment-lire-cette-notice">Comment lire cette notice</h2>
+<ul>
+<li>Les sections sont <strong>dans l’ordre</strong> où tu auras besoin
+d’elles si tu débutes avec l’app.</li>
+<li>Chaque section commence par <strong>« Où trouver »</strong> (le
+chemin dans l’app) puis <strong>« À quoi ça sert »</strong> et enfin
+<strong>« Comment faire pas à pas »</strong>.</li>
+<li>Les <strong>⚠️</strong> signalent les pièges ou les
+irréversibilités.</li>
+<li>Les <strong>💡</strong> sont des conseils pour gagner du temps.</li>
+<li>Les <strong>📝</strong> sont des rappels juridiques ou fiscaux
+importants.</li>
+</ul>
+<hr />
+<h1 id="présentation-générale">1. Présentation générale</h1>
+<h2 id="ce-que-lapp-sait-faire">1.1 Ce que l’app sait faire</h2>
+<p><strong>Côté gestion administrative</strong> :</p>
+<ul>
+<li>Inventorier tes <strong>logements</strong> (maisons, appartements,
+studios, garages…)</li>
+<li>Tenir à jour la liste de tes <strong>locataires</strong> et leurs
+coordonnées</li>
+<li>Réaliser des <strong>plans 2D</strong> de chaque logement, pièce par
+pièce</li>
+<li>Documenter l’<strong>état du logement</strong> (états des lieux
+d’entrée et de sortie, photos de murs intérieurs et extérieurs)</li>
+<li>Générer des <strong>contrats de bail</strong> complets (5 types :
+vide, meublé, colocation, saisonnier, mobilité)</li>
+<li>Créer des <strong>avenants</strong> (modifications du bail en
+cours)</li>
+<li>Stocker les <strong>diagnostics obligatoires</strong> (DPE, ERP,
+plomb, etc.)</li>
+<li>Émettre des <strong>quittances de loyer</strong> chaque mois,
+conformes à la loi ALUR</li>
+</ul>
+<p><strong>Côté finances</strong> :</p>
+<ul>
+<li>Enregistrer les <strong>dépenses</strong> (travaux, taxe foncière,
+assurance, etc.)</li>
+<li>Suivre les <strong>crédits immobiliers</strong> (capital, intérêts,
+mensualités, rachats)</li>
+<li>Appliquer les <strong>révisions annuelles de loyer</strong> selon
+l’IRL (INSEE)</li>
+<li>Calculer automatiquement la <strong>fiscalité</strong> (location
+nue, LMNP, SCI à l’IR, SCI à l’IS, avec Pinel, Borloo Ancien, déficit
+foncier, réductions, quotient familial…)</li>
+<li>Visualiser un <strong>tableau de bord</strong> synthétique</li>
+<li>Exporter ta <strong>comptabilité en CSV</strong> pour ton
+expert-comptable</li>
+</ul>
+<p><strong>Côté communication avec le locataire</strong> :</p>
+<ul>
+<li><strong>Partager</strong> des documents (EDL, quittances) au
+locataire avec un chiffrement renforcé</li>
+<li>Recevoir en retour des <strong>EDL signés</strong> par le
+locataire</li>
+<li>Programmer des <strong>rappels automatiques</strong> (préavis, fin
+de bail, expiration diagnostic) avec ajout au calendrier de ton
+téléphone</li>
+</ul>
+<h2 id="sur-quels-appareils-ça-tourne">1.2 Sur quels appareils ça
+tourne</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Appareil</th>
+<th>Disponibilité</th>
+<th>Particularité</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>iPhone / iPad</td>
+<td>✅</td>
+<td>AirDrop, Fichiers, calendrier natif</td>
+</tr>
+<tr>
+<td>Mac (macOS)</td>
+<td>✅</td>
+<td>AirDrop, Fichiers, calendrier natif</td>
+</tr>
+<tr>
+<td>Téléphone Android</td>
+<td>✅</td>
+<td>Partage Android, calendrier natif</td>
+</tr>
+<tr>
+<td>Ordinateur Linux</td>
+<td>✅</td>
+<td>Le double-clic sur les fichiers <code>.adlb</code> ouvre l’app</td>
+</tr>
+<tr>
+<td>Ordinateur Windows</td>
+<td>À venir</td>
+<td>Scaffold prêt, build à compiler</td>
+</tr>
+</tbody>
+</table>
+<p>💡 Tu peux installer l’app sur <strong>plusieurs appareils</strong>
+et les synchroniser manuellement (cf. § 22).</p>
+<h2 id="différence-avec-adda-locataire">1.3 Différence avec ADDA
+Locataire</h2>
+<p>Il existe une <strong>app jumelle</strong> appelée <strong>ADDA
+Locataire</strong>, destinée à ton/tes locataires. Elle leur permet de
+recevoir les documents que tu leur envoies, de signer un EDL, et de te
+faire des demandes d’intervention. Tu ne dois <strong>pas</strong>
+installer ADDA Locataire sur ton propre téléphone — tu utilises ADDA
+Bailleur. Ton locataire installe ADDA Locataire de son côté.</p>
+<hr />
+<h1 id="premier-démarrage">2. Premier démarrage</h1>
+<h2 id="saisie-du-profil-bailleur">2.1 Saisie du profil bailleur</h2>
+<p>Au tout premier lancement, l’app te demande de <strong>renseigner ton
+identité</strong> :</p>
+<ol type="1">
+<li><strong>Rôle</strong> : sélectionne « Bailleur »
+(propriétaire).</li>
+<li><strong>Prénom</strong> : ton prénom légal.</li>
+<li><strong>Nom</strong> : ton nom légal.</li>
+<li><strong>Email</strong> : une adresse fonctionnelle où tu peux
+recevoir des messages.</li>
+<li>(Optionnel) <strong>Téléphone</strong>, <strong>SIRET</strong> si tu
+es en société, <strong>mandat d’agence</strong> si tu passes par un
+gestionnaire.</li>
+</ol>
+<p>Tape sur <strong>« Enregistrer »</strong>.</p>
+<p>⚠️ <strong>Les 4 champs « rôle / prénom / nom / email » sont figés
+définitivement après cette première validation.</strong> Vérifie
+l’orthographe. Cette protection évite qu’un tiers ne puisse modifier ton
+identité pour émettre des quittances en ton nom.</p>
+<p>💡 Si tu te trompes, la seule solution est de désinstaller /
+réinstaller l’app (tu perds toutes tes données — fais une sauvegarde
+d’abord si tu en as déjà).</p>
+<h2 id="choix-du-thème-clair-sombre">2.2 Choix du thème (clair /
+sombre)</h2>
+<p>L’app détecte par défaut le thème système. Tu peux le forcer :</p>
+<ul>
+<li><strong>iOS / macOS</strong> : bouton soleil/lune en bas de l’écran
+d’accueil</li>
+<li><strong>Android</strong> : idem</li>
+</ul>
+<p>Le mode sombre est entièrement supporté — toutes les cartes, photos
+et PDF s’affichent correctement.</p>
+<h2 id="configurer-ta-fiscalité-recommandé-tout-de-suite">2.3 Configurer
+ta fiscalité (recommandé tout de suite)</h2>
+<p>Une bonne partie des calculs de l’app dépendent de tes
+<strong>paramètres fiscaux du foyer</strong>. Renseigne-les dès
+maintenant pour avoir un tableau de bord juste.</p>
+<p><strong>Chemin :</strong>
+<code>Accueil → Tableau de bord → ⚙️ Paramètres fiscaux</code></p>
+<p>Champs à remplir :</p>
+<ol type="1">
+<li><strong>Marié/pacsé</strong> : coche si applicable. Cela définit la
+« part de référence » du quotient familial (2 si oui, 1 si
+célibataire).</li>
+<li><strong>Nombre de parts fiscales</strong> : selon ton foyer (1
+célib, 2 couple, +0,5 par enfant à charge, +1 à partir du 3ᵉ enfant). En
+cas de doute, regarde ton dernier avis d’imposition.</li>
+<li><strong>Valeur par défaut des revenus bruts</strong> : revenus
+annuels hors fonciers (salaires + pensions + bénéfices). Tu peux ensuite
+saisir une <strong>valeur précise pour chaque année</strong>
+ci-dessous.</li>
+<li><strong>Autres niches fiscales</strong> : montant total déjà déclaré
+au titre d’autres avantages (services à la personne, dons, garde
+d’enfants…). Sert au plafonnement global de 10 000 €.</li>
+</ol>
+<p>💡 Reviens ici à chaque changement de situation : naissance, mariage,
+divorce, changement de salaire.</p>
+<hr />
+<h1 id="mes-logements">3. Mes logements</h1>
+<h2 id="à-quoi-ça-sert">3.1 À quoi ça sert</h2>
+<p>Un <strong>logement</strong> est l’objet central de l’app : tout le
+reste (locataire, EDL, bail, quittance, dépense, crédit, plan) lui est
+rattaché.</p>
+<h2 id="où-trouver">3.2 Où trouver</h2>
+<p><code>Accueil → bandeau « GESTION LOCATIVE » → Mes logements</code></p>
+<h2 id="ajouter-un-logement">3.3 Ajouter un logement</h2>
+<p>Tape sur le <strong>bouton + flottant</strong> en bas à droite.</p>
+<h3 id="section-identification">Section « Identification »</h3>
+<ul>
+<li><strong>Libellé</strong> : un nom court qui te parle (« Maison Cenon
+», « Studio Paris 11ᵉ »).</li>
+<li><strong>Adresse complète</strong> : numéro + rue.</li>
+<li><strong>Code postal</strong>.</li>
+<li><strong>Ville</strong>.</li>
+</ul>
+<h3 id="section-caractéristiques">Section « Caractéristiques »</h3>
+<ul>
+<li><strong>Type</strong> : maison / appartement / studio / autre.</li>
+<li><strong>Surface habitable (m²)</strong> : telle que mesurée loi
+Boutin (obligatoire pour les baux d’habitation).</li>
+<li><strong>Nombre de pièces</strong> : selon la définition fiscale
+(pièces principales, hors cuisine / SDB / WC).</li>
+<li><strong>Étage</strong> (optionnel).</li>
+</ul>
+<h3 id="section-loyer-et-charges">Section « Loyer et charges »</h3>
+<ul>
+<li><strong>Loyer HC</strong> : hors charges, mensuel.</li>
+<li><strong>Charges</strong> : provisions mensuelles sur charges.</li>
+</ul>
+<p>💡 Si le logement n’est pas loué actuellement, mets le futur loyer
+prévu.</p>
+<h3 id="section-équipements">Section « Équipements »</h3>
+<p>Liste libre, séparée par des virgules. Exemples : « Chauffage gaz,
+Double vitrage, Cuisine équipée, Jardin 200 m², Place de parking ».</p>
+<h3 id="section-fiscalité">Section « Fiscalité »</h3>
+<ul>
+<li><p><strong>Statut fiscal</strong> :</p>
+<ul>
+<li><strong>Location nue</strong> : standard, sans meubles.</li>
+<li><strong>LMNP</strong> : Loueur Meublé Non Professionnel (calcul
+micro-BIC 50 %).</li>
+<li><strong>SCI</strong> : le bien est détenu par une société civile. Tu
+devras sélectionner la SCI dans le menu déroulant qui apparaît (créer la
+SCI d’abord, cf. § 16).</li>
+<li><strong>Autre</strong> : le bien ne génère pas de revenus fonciers
+(résidence secondaire personnelle, par exemple).</li>
+</ul></li>
+<li><p><strong>Régime fiscal</strong> : <strong>auto-détecté</strong>,
+tu n’as rien à choisir. Un bandeau informatif t’indique le régime
+appliqué et pourquoi (« Recettes ≤ 15 000 € et aucun Pinel →
+Micro-foncier 30 % » par exemple).</p></li>
+<li><p><strong>Dispositif de défiscalisation</strong> :</p>
+<ul>
+<li><strong>Aucun</strong> (par défaut).</li>
+<li><strong>Pinel</strong> / <strong>Pinel+</strong> /
+<strong>Denormandie</strong> : réductions d’impôt sur investissement
+neuf ou ancien rénové. Demande date d’acquisition, durée d’engagement
+(6/9/12 ans), prix de revient.</li>
+<li><strong>Borloo Ancien intermédiaire (30 %)</strong> / <strong>social
+(60 %)</strong> / <strong>très social (70 %)</strong> : abattement sur
+les recettes brutes via convention Anah. Demande <strong>date de début
+et date de fin</strong> de la convention (obligatoire).</li>
+</ul></li>
+<li><p><strong>Période de validité du dispositif</strong> : du / au.
+Toute année hors de cette fenêtre = le dispositif n’est plus
+appliqué.</p></li>
+</ul>
+<p>📝 <strong>Loi importante</strong> : si tu coches Pinel / Denormandie
+/ Borloo, ton foyer est <strong>automatiquement basculé au régime
+réel</strong>, même si tes recettes sont sous 15 000 €. C’est une
+obligation légale.</p>
+<h3 id="section-sci">Section « SCI »</h3>
+<p>Visible uniquement si tu as choisi « SCI » dans Statut fiscal :</p>
+<ul>
+<li><strong>Société de détention</strong> : choisis la SCI dans la
+liste. Si la liste est vide, l’app t’indique d’aller en créer une dans
+Fiscalité.</li>
+<li><strong>Amortissement annuel</strong> (uniquement si SCI à l’IS) :
+montant que tu amortis chaque année sur le bâti (hors terrain).
+Habituellement 2 % de la valeur du bâti.</li>
+</ul>
+<p>Tape sur <strong>« Enregistrer »</strong>.</p>
+<h2 id="consulter-la-fiche-dun-logement">3.4 Consulter la fiche d’un
+logement</h2>
+<p>Tape sur un logement dans la liste pour ouvrir sa <strong>fiche
+détaillée</strong>, organisée en sections déroulantes :</p>
+<ol type="1">
+<li><strong>HERO CARD</strong> : libellé + occupation + bilan up-to-date
+des quittances du mois.</li>
+<li><strong>CARACTÉRISTIQUES</strong> : surface, pièces, loyer,
+équipements.</li>
+<li><strong>PLANS &amp; SURFACES</strong> : 0, 1 ou plusieurs plans
+dessinés ou importés.</li>
+<li><strong>Photos murs / façades extérieurs</strong> : galerie
+séparée.</li>
+<li><strong>CONTRATS DE BAIL</strong> : compteur + bail actif visible
+immédiatement.</li>
+<li><strong>DIAGNOSTICS</strong> : compteur + alerte si certains sont
+expirés.</li>
+<li><strong>Locataires</strong> : actuels et historiques.</li>
+<li><strong>Quittances</strong> récentes.</li>
+<li><strong>Crédits immobiliers</strong> rattachés.</li>
+<li><strong>Révisions de loyer</strong> historiques.</li>
+</ol>
+<h2 id="modifier-ou-supprimer">3.5 Modifier ou supprimer</h2>
+<ul>
+<li>Bouton <strong>crayon</strong> en haut à droite : éditer.</li>
+<li>Bouton <strong>poubelle</strong> : supprimer (avec
+confirmation).</li>
+</ul>
+<p>⚠️ La suppression d’un logement n’efface <strong>pas</strong> les
+locataires associés (ils restent dans « Mes locataires »). En revanche,
+les quittances, dépenses, crédits liés au logement seront orphelins.
+<strong>Ne supprime un logement que si tu es certain.</strong> Préfère
+plutôt l’archiver (en décochant tous les locataires actifs).</p>
+<hr />
+<h1 id="plans-du-logement">4. Plans du logement</h1>
+<h2 id="à-quoi-ça-sert-1">4.1 À quoi ça sert</h2>
+<p>Le plan 2D te sert à :</p>
+<ul>
+<li><strong>Documenter visuellement</strong> la configuration du
+logement.</li>
+<li><strong>Pré-remplir automatiquement les EDL</strong> : chaque pièce
+dessinée deviendra une pièce de l’EDL, avec ses accessoires pré-cochés
+selon le type (cuisine → évier + plan de travail + plaques ; SDB →
+lavabo + douche + WC ; etc.).</li>
+<li><strong>Photographier les murs</strong> un par un, avec
+horodatage.</li>
+</ul>
+<h2 id="où-trouver-1">4.2 Où trouver</h2>
+<p><code>Fiche logement → Plans &amp; surfaces → Gérer</code></p>
+<h2 id="créer-un-plan-vide">4.3 Créer un plan vide</h2>
+<p>Tape sur <strong>+</strong> → choisis :</p>
+<ul>
+<li><strong>Type</strong> : Niveau (étage), Dépendance (cave, garage,
+dépendance), ou Terrain.</li>
+<li><strong>Nom</strong> : « RDC », « 1ᵉʳ étage », « Garage », « Terrain
+».</li>
+</ul>
+<h2 id="importer-une-image-en-arrière-plan">4.4 Importer une image en
+arrière-plan</h2>
+<p>Si tu as déjà un plan papier scanné :</p>
+<ul>
+<li>Tape sur <strong>« Importer une image »</strong>.</li>
+<li>Choisis le fichier (PDF / PNG / JPG).</li>
+<li>L’image servira d’arrière-plan ; tu dessineras les pièces par-dessus
+pour qu’elles soient cliquables.</li>
+</ul>
+<h2 id="ajouter-des-pièces-palette-rapide">4.5 Ajouter des pièces
+(palette rapide)</h2>
+<p>En bas de l’éditeur, tu as une <strong>palette de boutons</strong>
+:</p>
+<ul>
+<li><strong>Cuisine, Salon, Chambre, Suite parentale, SDB, WC, Couloir,
+Entrée, Bureau, Garage</strong>.</li>
+<li><strong>Pièce en L</strong> : un polygone à 6 sommets, déjà mis en
+forme de L.</li>
+<li><strong>Pièce en T</strong> : un polygone à 8 sommets en T.</li>
+</ul>
+<p>Tape sur le bouton → la pièce apparaît au centre du plan.</p>
+<p>💡 La <strong>« Suite parentale »</strong> est traitée comme une
+chambre + salle de bain attenante : les accessoires EDL combineront
+placards/radiateur ET lavabo/douche/carrelage.</p>
+<p>💡 Pour un <strong>garage</strong> : automatiquement, une bande
+orange représentant la <strong>porte de garage</strong> apparaît sur le
+mur du bas, occupant 60 % de sa longueur. Quand la pièce est
+sélectionnée, <strong>deux poignées circulaires</strong> aux extrémités
+permettent de la redimensionner par glisser-déposer (elle reste centrée,
+on l’élargit symétriquement).</p>
+<h2 id="manipuler-une-pièce">4.6 Manipuler une pièce</h2>
+<ul>
+<li><strong>Déplacer</strong> : pose le doigt sur la pièce et
+glisse.</li>
+<li><strong>Sélectionner</strong> : tape une fois → des poignées rouges
+apparaissent sur chaque mur.</li>
+<li><strong>Redimensionner</strong> :
+<ul>
+<li>Pour un rectangle : tire les poignées des murs.</li>
+<li>Pour un polygone (L, T) : tire les poignées des sommets pour
+déformer.</li>
+</ul></li>
+<li><strong>Rotation</strong> : avec la pièce sélectionnée, bouton
+<strong>« Rotation »</strong> dans la sidebar.</li>
+<li><strong>Renommer</strong> : double-tape sur la pièce → boîte de
+saisie.</li>
+<li><strong>Forme libre</strong> : avec la pièce sélectionnée, bouton
+<strong>« Forme libre »</strong> → convertit en polygone, tu peux
+ajouter des sommets manuellement.</li>
+<li><strong>Cacher un mur</strong> : appui long sur un mur → il devient
+invisible (utile pour des pièces qui partagent un mur).</li>
+<li><strong>Supprimer la pièce</strong> : sélectionne + bouton
+poubelle.</li>
+</ul>
+<h2 id="photographier-les-murs-intérieurs">4.7 Photographier les murs
+intérieurs</h2>
+<ol type="1">
+<li>Active le mode <strong>« Capture photos murs »</strong> (icône
+appareil photo en haut).</li>
+<li>Tape sur la pièce que tu veux capturer (elle se verrouille).</li>
+<li>Tape sur le <strong>numéro du mur</strong> (M1, M2, M3, M4) qui
+apparaît sur chaque côté.</li>
+<li>L’appareil photo s’ouvre.</li>
+<li>Prends la photo.</li>
+</ol>
+<p>Chaque photo est automatiquement :</p>
+<ul>
+<li><strong>Horodatée</strong> : date + heure incrustées en bas à
+droite.</li>
+<li><strong>Étiquetée</strong> : le nom de la pièce et le numéro du mur
+(« Salon · M2 »).</li>
+<li><strong>Hash 8 chars</strong> (<code>#a1b2c3d4</code>) : empreinte
+unique de l’image.</li>
+</ul>
+<p>Ces photos sont conservées avec le plan et utilisées dans l’EDL en
+cours.</p>
+<h2 id="annotations">4.8 Annotations</h2>
+<p>Tu peux ajouter des <strong>marqueurs</strong> à n’importe quel
+endroit du plan :</p>
+<ul>
+<li>Active le mode <strong>« Annoter »</strong>.</li>
+<li>Tape sur l’emplacement.</li>
+<li>Saisis un titre + une description.</li>
+</ul>
+<p>Exemple : « Prise électrique défectueuse — à remplacer ».</p>
+<p>Les annotations sont visibles sur le PDF généré.</p>
+<hr />
+<h1 id="mes-locataires">5. Mes locataires</h1>
+<h2 id="à-quoi-ça-sert-2">5.1 À quoi ça sert</h2>
+<p>Chaque locataire est une personne physique qui occupe (ou occupera)
+un logement. Tu peux avoir :</p>
+<ul>
+<li>Un locataire seul.</li>
+<li>Une famille (plusieurs personnes mais 1 seul titulaire du
+bail).</li>
+<li>Une <strong>colocation</strong> : plusieurs titulaires du bail.</li>
+</ul>
+<h2 id="où-trouver-2">5.2 Où trouver</h2>
+<p><code>Accueil → Mes locataires</code></p>
+<h2 id="ajouter-un-locataire">5.3 Ajouter un locataire</h2>
+<p>Bouton + flottant.</p>
+<h3 id="champs-principaux">Champs principaux</h3>
+<ul>
+<li><strong>Prénom</strong> + <strong>Nom</strong> : seront figés après
+création (anti-fraude).</li>
+<li><strong>Email</strong> : figé après création. Sert au partage
+chiffré.</li>
+<li><strong>Téléphone</strong>.</li>
+<li><strong>Logements rattachés</strong> : multi-sélection. Si tu coches
+plusieurs, c’est une colocation.</li>
+<li><strong>Date d’entrée</strong> : début effectif du bail.</li>
+<li><strong>Date de sortie</strong> : laisse vide tant que le locataire
+est en place. Une fois renseignée, le locataire passe en « Archivé
+».</li>
+<li><strong>Loyer de sortie</strong> (à renseigner au départ) : utile en
+cas de régularisation.</li>
+<li><strong>Nouvelle adresse / téléphone / email</strong> (après départ)
+: pour rester en contact si besoin (restitution dépôt, courrier,
+etc.).</li>
+<li><strong>Notes</strong> : tout texte libre.</li>
+</ul>
+<h2 id="statuts-automatiques">5.4 Statuts automatiques</h2>
+<ul>
+<li><strong>Futur</strong> : la date d’entrée est dans le futur.</li>
+<li><strong>Actif</strong> : entre date d’entrée et sortie (ou pas de
+date de sortie).</li>
+<li><strong>Archivé</strong> : date de sortie passée.</li>
+</ul>
+<p>L’écran a quatre onglets : <strong>Tous · Actifs · Futurs ·
+Archivés</strong>.</p>
+<h2 id="contrats-de-bail-signés">5.5 Contrats de bail signés</h2>
+<p>Sur le contrat de bail (cf. § 7), tu désigneras le ou les locataires
+concernés. Un locataire peut avoir plusieurs baux successifs (sur le
+même logement ou des logements différents).</p>
+<hr />
+<h1 id="états-des-lieux-edl">6. États des lieux (EDL)</h1>
+<h2 id="à-quoi-ça-sert-3">6.1 À quoi ça sert</h2>
+<p>L’<strong>état des lieux</strong> est obligatoire pour la mise en
+location d’un logement nu ou meublé (article 3-2 loi 89-462). Il décrit
+contradictoirement l’état du logement à l’entrée puis à la sortie. La
+comparaison entre les deux permet de retenir tout ou partie du dépôt de
+garantie en cas de dégradations.</p>
+<h2 id="où-trouver-3">6.2 Où trouver</h2>
+<p><code>Accueil → États des lieux</code> ou directement depuis la fiche
+logement.</p>
+<h2 id="créer-un-nouvel-edl">6.3 Créer un nouvel EDL</h2>
+<p>Bouton + flottant → écran de configuration :</p>
+<ol type="1">
+<li><strong>Type</strong> : <strong>Entrée</strong> ou
+<strong>Sortie</strong>.</li>
+<li><strong>Logement</strong> : choisis dans la liste.</li>
+<li><strong>Locataire</strong> : choisis le locataire concerné.</li>
+<li><strong>Date</strong> : généralement le jour où tu fais l’EDL
+physiquement.</li>
+</ol>
+<p>Tape sur <strong>« Créer »</strong>.</p>
+<h3 id="génération-automatique-des-pièces">Génération automatique des
+pièces</h3>
+<p>L’app analyse le <strong>plan du logement</strong> :</p>
+<ul>
+<li>Si tu as dessiné un plan avec des pièces nommées, <strong>chaque
+pièce du plan devient une pièce de l’EDL</strong>, dans le même
+ordre.</li>
+<li>Les <strong>accessoires</strong> (éléments à inspecter) sont
+<strong>pré-remplis</strong> selon le nom de la pièce :
+<ul>
+<li>« Cuisine » → évier, robinetterie, plan de travail, plaques de
+cuisson, four, hotte, frigo + murs/sols/plafond/éclairage.</li>
+<li>« Salle de bain » → lavabo, robinetterie, baignoire/douche,
+carrelage, miroir, VMC + communs.</li>
+<li>« WC » → cuvette, abattant, mécanisme + communs.</li>
+<li>« Chambre » → placards, radiateur + communs.</li>
+<li>« Garage » → sols, murs, plafond, éclairage, porte.</li>
+<li>« Suite parentale » → placards/dressing, radiateur, lavabo,
+robinetterie, baignoire/douche, carrelage, miroir, VMC + communs.</li>
+<li>Etc.</li>
+</ul></li>
+</ul>
+<p>Si aucun plan n’existe, l’app utilise un <strong>template par
+défaut</strong> selon le type de logement (studio / appartement /
+maison).</p>
+<p>💡 Tu peux <strong>modifier la liste des pièces et leurs
+accessoires</strong> une fois créée (ajouter, supprimer, renommer).</p>
+<h2 id="saisir-ledl-pièce-par-pièce">6.4 Saisir l’EDL pièce par
+pièce</h2>
+<p>Tape sur une <strong>pièce</strong> → liste de ses
+<strong>éléments</strong>.</p>
+<p>Pour chaque élément :</p>
+<h3 id="état">État</h3>
+<p>Pastille colorée à 6 niveaux :</p>
+<ul>
+<li><strong>Neuf</strong> (vert foncé)</li>
+<li><strong>Bon</strong> (bleu)</li>
+<li><strong>Usé</strong> (orange)</li>
+<li><strong>Abîmé</strong> (rouge)</li>
+<li><strong>Très mauvais</strong> (rouge foncé)</li>
+<li><strong>À refaire</strong> (rouge foncé)</li>
+</ul>
+<h3 id="description">Description</h3>
+<p>Texte libre : « Tache marron 5 cm sur le mur gauche », « Joint
+silicone manquant entre lavabo et meuble », etc.</p>
+<h3 id="photos">Photos</h3>
+<p>Bouton <strong>« + Photo »</strong> :</p>
+<ul>
+<li>Caméra ou galerie.</li>
+<li>L’app <strong>incruste automatiquement</strong> sur la photo : date,
+heure, et un hash SHA-256 de 8 caractères (<code>#a1b2c3d4</code>).</li>
+<li>Métadonnée stockée à part : date de capture précise + hash
+complet.</li>
+</ul>
+<p>💡 Prends au moins 1 photo par élément en mauvais état. C’est ta
+preuve en cas de litige.</p>
+<h2 id="métadonnées-globales">6.5 Métadonnées globales</h2>
+<p>En bas de l’écran d’édition :</p>
+<ul>
+<li><strong>Adresse bailleur</strong> : pour l’en-tête du PDF (snapshot
+conservé).</li>
+<li><strong>Nombre de clés</strong> remises.</li>
+<li><strong>Relevés de compteurs</strong> : gaz, eau chaude, eau froide,
+électricité jour, électricité nuit.</li>
+<li><strong>Notes</strong> libres.</li>
+</ul>
+<h2 id="signature">6.6 Signature</h2>
+<h3 id="côté-bailleur">Côté bailleur</h3>
+<p>Tape sur <strong>« Signer (bailleur) »</strong> → un pad de signature
+s’ouvre. Trace ta signature au doigt ou au stylet. Valide.</p>
+<p>L’app génère un <strong>code à 8 caractères</strong> que tu devras
+transmettre <strong>oralement</strong> au locataire pour qu’il puisse
+ouvrir le fichier <code>.adls</code> côté ADDA Locataire.</p>
+<h3 id="côté-locataire">Côté locataire</h3>
+<p>Deux options :</p>
+<ol type="1">
+<li><strong>Sur place</strong> : le locataire signe directement sur ton
+appareil (tape sur « Signer (locataire) ») — pratique au moment de la
+remise des clés.</li>
+<li><strong>À distance</strong> : tu lui envoies le bundle
+<code>.adls</code> (cf. § 20), il signe dans ADDA Locataire, il te
+renvoie un fichier <code>.adlr</code> chiffré que tu ouvres pour
+intégrer sa signature.</li>
+</ol>
+<h2 id="générer-le-pdf">6.7 Générer le PDF</h2>
+<p>Bouton <strong>« Générer le PDF »</strong> → l’app produit un
+document complet :</p>
+<ul>
+<li><strong>Couverture</strong> avec les identités, le logement, la
+date.</li>
+<li><strong>Sommaire</strong>.</li>
+<li><strong>Pièces</strong> une par une avec leurs éléments,
+descriptions et <strong>photos horodatées</strong>.</li>
+<li><strong>Plans annexés</strong> s’ils existent.</li>
+<li><strong>Signatures</strong> propriétaire et locataire (rendu
+PNG).</li>
+<li><strong>Annexe photos</strong> rassemblant toutes les photos en
+haute qualité.</li>
+</ul>
+<p>Mention légale automatique : article 3-2 de la loi 89-462.</p>
+<p>Le PDF s’ouvre dans le <strong>viewer natif</strong> : tu peux
+l’imprimer, l’envoyer par mail, le partager via AirDrop, etc.</p>
+<h2 id="retour-signé-locataire-.adlr">6.8 Retour signé locataire
+(<code>.adlr</code>)</h2>
+<p>Quand le locataire te renvoie un <code>.adlr</code> :</p>
+<ol type="1">
+<li>Tape sur le fichier reçu (mail, AirDrop, Drive…).</li>
+<li>L’app s’ouvre, te demande le <strong>code à 8 caractères</strong>
+que <strong>lui</strong> t’a communiqué oralement.</li>
+<li>La signature locataire s’intègre automatiquement à l’EDL.</li>
+<li>L’app <strong>vérifie le hash pré-signature</strong> : si quelqu’un
+a modifié l’EDL entre temps, le hash diffère et l’app refuse
+l’intégration (protection anti-falsification).</li>
+</ol>
+<hr />
+<h1 id="contrats-de-bail">7. Contrats de bail</h1>
+<h2 id="à-quoi-ça-sert-4">7.1 À quoi ça sert</h2>
+<p>Le <strong>contrat de bail</strong> est le document juridique qui
+matérialise la location entre toi (le bailleur) et le locataire. Il est
+obligatoire (article 1714 du Code civil) et doit respecter de nombreuses
+règles selon le type de location.</p>
+<p>L’app gère <strong>5 types de bail</strong>, avec leurs spécificités
+:</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Durée min</th>
+<th>Plafond dépôt</th>
+<th>Préavis bailleur</th>
+<th>Préavis locataire</th>
+<th>Quand ?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vide</td>
+<td>3 ans (6 si SCI)</td>
+<td>2 mois HC</td>
+<td>6 mois</td>
+<td>3 mois (1 zone tendue)</td>
+<td>Logement non meublé</td>
+</tr>
+<tr>
+<td>Meublé</td>
+<td>1 an</td>
+<td>1 mois HC</td>
+<td>3 mois</td>
+<td>1 mois</td>
+<td>Avec mobilier décret 2015-981</td>
+</tr>
+<tr>
+<td>Colocation</td>
+<td>3 ans</td>
+<td>2 mois HC</td>
+<td>6 mois</td>
+<td>1 mois</td>
+<td>Plusieurs titulaires</td>
+</tr>
+<tr>
+<td>Saisonnier</td>
+<td>≤ 90 jours</td>
+<td>1 mois</td>
+<td>—</td>
+<td>—</td>
+<td>Touristique, courte durée</td>
+</tr>
+<tr>
+<td>Mobilité</td>
+<td>1 à 10 mois</td>
+<td>1 mois</td>
+<td>1 mois</td>
+<td>1 mois</td>
+<td>Étudiant, mission temporaire</td>
+</tr>
+</tbody>
+</table>
+<h2 id="où-trouver-4">7.2 Où trouver</h2>
+<p><code>Fiche logement → CONTRATS DE BAIL → Gérer → bouton « Nouveau bail »</code></p>
+<h2 id="créer-un-bail-étape-par-étape">7.3 Créer un bail — étape par
+étape</h2>
+<h3 id="étape-a-type-de-bail">Étape A : Type de bail</h3>
+<p>Choisis dans le dropdown. <strong>Tout le reste du formulaire
+s’adapte</strong> : durée par défaut, plafond du dépôt, préavis, clauses
+spécifiques.</p>
+<h3 id="étape-b-locataires">Étape B : Locataire(s)</h3>
+<p>Coche le ou les locataires qui signeront ce bail. Pour une
+colocation, coche <strong>plusieurs locataires</strong>.</p>
+<ul>
+<li>Si colocation : un champ supplémentaire <strong>« Référent
+colocataire »</strong> apparaît. Tu peux désigner un colocataire qui
+sera l’<strong>interlocuteur principal</strong>.</li>
+</ul>
+<p>⚠️ Si la liste est vide, c’est que tu n’as pas encore créé de
+locataire pour ce logement. Va dans « Mes locataires » d’abord (§
+5).</p>
+<h3 id="étape-c-durée">Étape C : Durée</h3>
+<ul>
+<li><strong>Date d’effet</strong> : tape sur le champ → calendrier →
+choisis la date.</li>
+<li><strong>Durée (mois)</strong> : pré-remplie selon le type (36 pour
+vide, 12 pour meublé, etc.). Tu peux modifier.</li>
+<li>La <strong>date de fin</strong> est calculée automatiquement.</li>
+</ul>
+<h3 id="étape-d-loyer-et-charges">Étape D : Loyer et charges</h3>
+<ul>
+<li><strong>Loyer HC</strong> : hors charges, pré-rempli depuis le
+logement.</li>
+<li><strong>Charges</strong> : provisions mensuelles, pré-remplies
+depuis le logement.</li>
+<li><strong>Mode de paiement</strong> :
+<ul>
+<li><strong>Virement bancaire</strong> (le plus courant).</li>
+<li><strong>Prélèvement automatique</strong>.</li>
+<li><strong>Chèque</strong>.</li>
+<li><strong>Espèces</strong> (à éviter au-delà de 1 000 €).</li>
+</ul></li>
+<li><strong>RIB du bailleur</strong> : visible si virement ou
+prélèvement.</li>
+<li><strong>Jour d’échéance</strong> : 1 à 31. Habituellement le 1, 5 ou
+10 du mois.</li>
+<li><strong>Dépôt de garantie</strong> : pré-rempli au plafond légal (2
+mois ou 1 mois HC selon le type). Tu peux mettre moins, jamais
+plus.</li>
+</ul>
+<h3 id="étape-e-clauses-spécifiques">Étape E : Clauses spécifiques</h3>
+<p>Coche / décoche selon ton choix :</p>
+<ul>
+<li><strong>Révision annuelle selon l’IRL</strong> : recommandé. Permet
+de réviser le loyer chaque année selon l’indice INSEE.</li>
+<li><strong>Logement non-fumeur</strong> : interdiction de fumer dans le
+logement.</li>
+<li><strong>Animaux autorisés</strong> : si coché, un champ apparaît
+pour préciser les conditions.</li>
+<li><strong>Solidarité colocataires</strong> (colocation uniquement) :
+tous les colocataires sont solidairement responsables du loyer entier.
+Recommandé.</li>
+<li><strong>Charges incluses</strong> (saisonnier uniquement) : si oui,
+le locataire ne paie rien en sus.</li>
+<li><strong>Justificatif de mobilité</strong> (mobilité uniquement) : ex
+« étudiant Master 2 à Paris-Saclay », « mission de 6 mois chez X ».</li>
+</ul>
+<h3 id="étape-f-équipements-meublé-uniquement-bail-meublé">Étape F :
+Équipements meublé (uniquement bail meublé)</h3>
+<p>Décret n°2015-981 du 31 juillet 2015 : la liste minimale est
+<strong>pré-cochée</strong>. Décoche ce qui manque, ajoute via la liste
+« optionnels » si tu fournis plus :</p>
+<ul>
+<li>Obligatoires : literie, table et sièges, étagères, luminaires,
+plaques, four ou micro-ondes, frigo, ustensiles, évier.</li>
+<li>Optionnels : lave-vaisselle, machine à laver, sèche-linge,
+aspirateur, TV.</li>
+</ul>
+<h3 id="étape-g-notes-additionnelles">Étape G : Notes
+additionnelles</h3>
+<p>Tout texte libre que tu veux faire apparaître dans les mentions
+légales du PDF.</p>
+<p>Tape sur <strong>« Enregistrer et ouvrir »</strong> → tu arrives sur
+la <strong>fiche du bail</strong>.</p>
+<h2 id="fiche-du-bail">7.4 Fiche du bail</h2>
+<p>Tu y vois :</p>
+<ul>
+<li>En-tête coloré : type + statut + référence (BAIL-2026-XXX généré
+automatiquement).</li>
+<li>Récapitulatif (logement, durée, dates).</li>
+<li>Financier (loyer, charges, dépôt, mode, RIB).</li>
+<li>Liste des locataires avec leur statut de signature.</li>
+<li>État de signature bailleur.</li>
+<li>Bouton <strong>« Générer / régénérer le PDF »</strong>.</li>
+<li>Bouton <strong>« Avenants »</strong> (cf. § 8).</li>
+</ul>
+<h2 id="signer-le-bail">7.5 Signer le bail</h2>
+<h3 id="bailleur">Bailleur</h3>
+<p>Tape sur <strong>« Signer »</strong> à côté de « Signature bailleur
+». Pad de signature. Valide.</p>
+<h3 id="locataires">Locataires</h3>
+<p>Tape sur <strong>chaque nom de locataire</strong> dans la liste. Pad.
+Valide.</p>
+<p>⚠️ En colocation, <strong>tous</strong> les colocataires doivent
+signer. Tant que l’un manque, le bail est juridiquement incomplet.</p>
+<h2 id="générer-le-pdf-1">7.6 Générer le PDF</h2>
+<p>Bouton <strong>« Générer / régénérer le PDF »</strong> :</p>
+<ul>
+<li>L’app calcule un <strong>hash SHA-256 d’intégrité</strong> sur 12
+champs canoniques (id, référence, type, dates, loyer, charges, dépôt,
+locataires, signatures).</li>
+<li>Le PDF se génère avec :
+<ul>
+<li>Page de garde</li>
+<li>Article 1 : Parties</li>
+<li>Article 2 : Description du logement</li>
+<li>Article 3 : Durée du bail</li>
+<li>Article 4 : Loyer et charges</li>
+<li>Article 5 : Obligations du bailleur</li>
+<li>Article 6 : Obligations du locataire</li>
+<li>Article 7 : Clauses spécifiques selon le type</li>
+<li>Article 9 : Clauses générales (force majeure, litiges,
+modifications)</li>
+<li>Mentions légales (loi ALUR + Code civil articles 1708-1762 +
+RGPD)</li>
+<li>Annexe diagnostics (si tu en as ajoutés au logement)</li>
+<li>Page signatures avec rendu PNG des signatures</li>
+<li>Hash d’intégrité en bas</li>
+</ul></li>
+</ul>
+<p>Le PDF s’ouvre directement dans le <strong>viewer natif</strong> pour
+impression / partage.</p>
+<h2 id="statuts-du-bail">7.7 Statuts du bail</h2>
+<p>L’app suit automatiquement :</p>
+<ul>
+<li><strong>Brouillon</strong> : créé, pas encore signé.</li>
+<li><strong>Signé</strong> : signature bailleur posée.</li>
+<li><strong>En cours</strong> : entre date d’effet et fin.</li>
+<li><strong>Terminé</strong> : après la date de fin.</li>
+<li><strong>Résilié</strong> : forcé manuellement.</li>
+</ul>
+<h2 id="imprimer-en-2-exemplaires">7.8 Imprimer en 2 exemplaires</h2>
+<p>📝 <strong>Obligation légale</strong> : un exemplaire pour chaque
+partie. Tu peux :</p>
+<ul>
+<li><strong>Imprimer</strong> depuis le viewer PDF (suffit pour la
+signature manuelle).</li>
+<li>Ou <strong>partager</strong> le PDF au locataire qui l’imprime de
+son côté.</li>
+</ul>
+<p>Avec les signatures électroniques de l’app + hash d’intégrité, la
+valeur probante est très forte (équivalent eIDAS niveau « avancé »).</p>
+<hr />
+<h1 id="avenants">8. Avenants</h1>
+<h2 id="à-quoi-ça-sert-5">8.1 À quoi ça sert</h2>
+<p>Un <strong>avenant</strong> modifie ponctuellement un bail en cours
+sans le rompre. Cas typiques :</p>
+<ul>
+<li>Révision du loyer (révision IRL annuelle).</li>
+<li>Changement de durée (prolongation, raccourcissement).</li>
+<li>Ajout d’une clause (ex : nouvelle place de parking incluse).</li>
+<li>Départ d’un colocataire et remplacement.</li>
+</ul>
+<h2 id="où-trouver-5">8.2 Où trouver</h2>
+<p><code>Fiche du bail → bouton « Avenants » en bas → Nouvel avenant</code></p>
+<h2 id="créer-un-avenant">8.3 Créer un avenant</h2>
+<p>Dialog :</p>
+<ul>
+<li><strong>Objet</strong> : titre court (« Révision IRL T2 2027 », «
+Ajout dressing »).</li>
+<li><strong>Date d’effet</strong> : à partir de quand l’avenant
+s’applique.</li>
+<li><strong>Description</strong> : détails de la modification.</li>
+<li><strong>Modifications</strong> (optionnelles) :
+<ul>
+<li>Nouveau loyer HC.</li>
+<li>Nouvelles charges.</li>
+<li>Nouvelle durée (mois).</li>
+</ul></li>
+</ul>
+<p>L’app <strong>numérote automatiquement</strong> les avenants (#1, #2,
+#3…).</p>
+<h2 id="liste-des-avenants">8.4 Liste des avenants</h2>
+<p>Tous les avenants d’un bail sont listés du plus récent au plus
+ancien, avec les modifications affichées en chips colorées (« Loyer →
+850 € », « Durée → 36 mois »).</p>
+<p>📝 Comme pour le bail, un avenant doit être signé par les deux
+parties.</p>
+<hr />
+<h1 id="diagnostics">9. Diagnostics</h1>
+<h2 id="à-quoi-ça-sert-6">9.1 À quoi ça sert</h2>
+<p>Les <strong>diagnostics immobiliers</strong> sont obligatoires pour
+louer un logement (loi ALUR + décrets). Ils protègent le locataire et te
+protègent en cas de litige.</p>
+<table>
+<thead>
+<tr>
+<th>Diagnostic</th>
+<th>Quand ?</th>
+<th>Validité légale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DPE</td>
+<td>Toujours</td>
+<td>10 ans</td>
+</tr>
+<tr>
+<td>ERP</td>
+<td>Toujours (depuis juin 2023)</td>
+<td>6 mois en pratique</td>
+</tr>
+<tr>
+<td>Plomb</td>
+<td>Constructions avant 1949</td>
+<td>Illimitée si négatif</td>
+</tr>
+<tr>
+<td>Amiante</td>
+<td>Permis avant juillet 1997</td>
+<td>Illimitée si négatif</td>
+</tr>
+<tr>
+<td>Termites</td>
+<td>Zones infestées</td>
+<td>6 mois</td>
+</tr>
+<tr>
+<td>Électrique</td>
+<td>Installation &gt; 15 ans</td>
+<td>6 ans</td>
+</tr>
+<tr>
+<td>Gaz</td>
+<td>Installation &gt; 15 ans</td>
+<td>6 ans</td>
+</tr>
+<tr>
+<td>Assainissement</td>
+<td>Non collectif</td>
+<td>3 ans</td>
+</tr>
+<tr>
+<td>Audit énergétique</td>
+<td>Passoires F/G</td>
+<td>5 ans</td>
+</tr>
+</tbody>
+</table>
+<h2 id="où-trouver-6">9.2 Où trouver</h2>
+<p><code>Fiche logement → DIAGNOSTICS → Gérer → Nouveau diagnostic</code></p>
+<h2 id="saisir-un-diagnostic">9.3 Saisir un diagnostic</h2>
+<ul>
+<li><strong>Type</strong> : dropdown avec description explicative.</li>
+<li><strong>Date de réalisation</strong> : date du rapport du
+diagnostiqueur. L’app calcule et affiche la <strong>date
+d’expiration</strong>.</li>
+<li><strong>Résumé / résultat</strong> : texte court (ex : « Classe D /
+E pour l’énergie et le climat », « Conforme », « Présence plomb classe 2
+»).</li>
+<li><strong>Importer le PDF</strong> : copie le fichier dans le sandbox
+de l’app pour qu’il soit toujours accessible.</li>
+</ul>
+<h2 id="diagnostics-expirés">9.4 Diagnostics expirés</h2>
+<p>L’app <strong>flag automatiquement</strong> les diagnostics dont la
+date d’expiration est dépassée :</p>
+<ul>
+<li><strong>Bordure rouge</strong> sur la carte.</li>
+<li><strong>Alerte rouge</strong> sur la fiche logement (« ⚠ 2
+diagnostics expirés »).</li>
+<li><strong>Rappel automatique</strong> dans l’écran Rappels (§
+18).</li>
+</ul>
+<h2 id="annexe-automatique-au-bail">9.5 Annexe automatique au bail</h2>
+<p>À chaque génération de PDF de bail, <strong>tous les diagnostics du
+logement sont listés</strong> dans la section « Annexes » du contrat,
+avec leur type, date et statut (en cours / expiré).</p>
+<hr />
+<h1 id="photos-murs-façades-extérieurs">10. Photos murs / façades
+extérieurs</h1>
+<h2 id="à-quoi-ça-sert-7">10.1 À quoi ça sert</h2>
+<p>Documenter visuellement :</p>
+<ul>
+<li>L’état des <strong>façades</strong> (nord, sud, est, ouest,
+pignon).</li>
+<li>La <strong>toiture</strong> (visible).</li>
+<li>La <strong>cour</strong> ou le <strong>jardin</strong>.</li>
+<li>Les <strong>clôtures</strong>.</li>
+<li>Les <strong>annexes</strong> non incluses dans le plan
+principal.</li>
+</ul>
+<p>Ces photos sont <strong>distinctes</strong> des photos d’EDL
+intérieures.</p>
+<h2 id="où-trouver-7">10.2 Où trouver</h2>
+<p><code>Fiche logement → Photos murs / façades extérieurs</code></p>
+<h2 id="ajouter-une-photo">10.3 Ajouter une photo</h2>
+<p>Bouton + flottant :</p>
+<ol type="1">
+<li>Choisis <strong>Caméra</strong> ou <strong>Galerie</strong>.</li>
+<li>L’app demande un <strong>libellé</strong> : « Façade nord », «
+Pignon ouest », « Toiture », « Jardin »…</li>
+<li>La photo est :
+<ul>
+<li>Stockée dans le sandbox.</li>
+<li><strong>Horodatée</strong> (date + heure incrustées).</li>
+<li><strong>Étiquetée</strong> avec ton libellé.</li>
+<li>Persistée dans le plan du logement (avec flag
+<code>isExterior=true</code>).</li>
+</ul></li>
+</ol>
+<h2 id="renommer-supprimer">10.4 Renommer / supprimer</h2>
+<p>Sur chaque vignette :</p>
+<ul>
+<li><strong>Renommer</strong> : bouton « Renommer » → modifie le
+libellé.</li>
+<li><strong>Supprimer</strong> : bouton poubelle → confirmation →
+l’image disque est effacée.</li>
+</ul>
+<hr />
+<h1 id="quittances-de-loyer">11. Quittances de loyer</h1>
+<h2 id="à-quoi-ça-sert-8">11.1 À quoi ça sert</h2>
+<p>La quittance prouve que le locataire a payé son loyer. Elle est
+<strong>obligatoire</strong> sur demande du locataire (loi du 6 juillet
+1989 article 21, dite <strong>loi ALUR</strong>) et il peut s’en servir
+comme justificatif (banque, CAF, dossier de location futur…).</p>
+<h2 id="où-trouver-8">11.2 Où trouver</h2>
+<ul>
+<li><code>Accueil → bandeau FINANCES → Quittances de loyer</code></li>
+<li>Ou raccourci « Générer quittance » sur l’accueil</li>
+<li>Ou bandeau d’alerte sur le tableau de bord si une quittance du mois
+manque</li>
+</ul>
+<h2 id="créer-une-quittance">11.3 Créer une quittance</h2>
+<p>Bouton + flottant :</p>
+<ul>
+<li><strong>Logement</strong> : choisis.</li>
+<li><strong>Locataire</strong> : choisis (filtré par logement).</li>
+<li><strong>Période</strong> : mois + année.</li>
+<li><strong>Loyer HC</strong> + <strong>Charges</strong> : pré-remplis
+depuis le logement (ou la dernière révision IRL si applicable).</li>
+<li><strong>Date de paiement</strong> : quand tu as effectivement reçu
+le règlement.</li>
+<li><strong>Date d’émission</strong> : jour où tu génères la
+quittance.</li>
+<li><strong>Notes</strong> (optionnel) : « Réception virement », «
+Acompte sur charges trop-perçues », etc.</li>
+</ul>
+<p>Tape sur <strong>« Enregistrer et générer le PDF »</strong>.</p>
+<h2 id="pdf-hash">11.4 PDF + hash</h2>
+<p>Le PDF respecte la loi ALUR (mention « Pour la somme totale de … »,
+identification des parties, période, total).</p>
+<p>Un <strong>hash SHA-256</strong> est inclus dans le PDF. Si quelqu’un
+modifie le PDF a posteriori (par ex. pour falsifier le montant), la
+signature numérique ne correspond plus et c’est détectable.</p>
+<h2 id="génération-en-lot-mensuelle">11.5 Génération en lot
+mensuelle</h2>
+<p>Sur le tableau de bord, dès qu’on entre dans un nouveau mois, l’app
+détecte automatiquement les locataires actifs sans quittance pour ce
+mois et affiche un bandeau <strong>« Quittance de [mois] à générer
+»</strong>. Tape dessus → écran de création pré-rempli.</p>
+<p>💡 Tu peux générer la quittance dès que tu reçois le règlement, ou en
+fin de mois en lot, comme tu préfères.</p>
+<hr />
+<h1 id="dépenses">12. Dépenses</h1>
+<h2 id="à-quoi-ça-sert-9">12.1 À quoi ça sert</h2>
+<p>Enregistrer toutes les sorties d’argent liées à tes logements pour
+:</p>
+<ul>
+<li>Suivre le bilan net annuel.</li>
+<li>Déduire les charges du revenu foncier dans le calcul fiscal.</li>
+<li>Justifier en cas de contrôle fiscal.</li>
+</ul>
+<h2 id="où-trouver-9">12.2 Où trouver</h2>
+<p><code>Accueil → Tableau de bord → bouton « Toutes les dépenses »</code>
+ou raccourci « Ajouter dépense »</p>
+<h2 id="saisir-une-dépense">12.3 Saisir une dépense</h2>
+<ul>
+<li><strong>Logement</strong> rattaché.</li>
+<li><strong>Catégorie</strong> : Travaux, Taxe foncière, Assurance,
+Frais de gestion, Énergie, Eau, Internet, Réparations, Honoraires,
+Autres. Tu peux créer tes propres catégories.</li>
+<li><strong>Libellé</strong> : court (« Plombier WC », « Taxe 2026
+»).</li>
+<li><strong>Montant</strong> en €.</li>
+<li><strong>Date</strong> : date de la facture / paiement.</li>
+<li><strong>Justificatifs</strong> : importe la facture en PDF ou
+photo.</li>
+<li><strong>Notes</strong> : libre.</li>
+</ul>
+<p>📝 La catégorie <strong>« Crédit immobilier »</strong> est réservée
+au module crédit — ne l’utilise pas pour les dépenses courantes (sinon
+double comptage dans le fiscal).</p>
+<h2 id="récap">12.4 Récap</h2>
+<p>Sur le tableau de bord :</p>
+<ul>
+<li>Total annuel de dépenses.</li>
+<li>Répartition par catégorie.</li>
+<li>Évolution mensuelle.</li>
+</ul>
+<p>Toutes les dépenses sont déduites du revenu foncier (régime réel)
+sauf la catégorie « Crédit immobilier ».</p>
+<hr />
+<h1 id="crédits-immobiliers">13. Crédits immobiliers</h1>
+<h2 id="à-quoi-ça-sert-10">13.1 À quoi ça sert</h2>
+<p>Suivre tes emprunts immobiliers : capital, taux, échéancier, intérêts
+déductibles fiscalement, rachats éventuels.</p>
+<h2 id="où-trouver-10">13.2 Où trouver</h2>
+<p><code>Accueil → Tableau de bord → Crédits immobiliers → +</code></p>
+<h2 id="créer-un-crédit">13.3 Créer un crédit</h2>
+<ul>
+<li><strong>Libellé</strong> : « Crédit principal Maison Cenon ».</li>
+<li><strong>Logement</strong> : rattachement.</li>
+<li><strong>Capital emprunté</strong>.</li>
+<li><strong>Taux annuel</strong> (%) : ex 1,85.</li>
+<li><strong>Durée</strong> (mois) : ex 240 (20 ans).</li>
+<li><strong>Mensualité</strong> : auto-calculée (peut être
+surchargée).</li>
+<li><strong>Assurance mensuelle</strong>.</li>
+<li><strong>Date de début</strong>.</li>
+<li>(Optionnel) <strong>Rachat de crédit</strong> : si tu as renégocié,
+saisis la date du rachat + la nouvelle mensualité. L’app applique le
+changement à partir de cette date.</li>
+</ul>
+<h2 id="vue-détaillée">13.4 Vue détaillée</h2>
+<ul>
+<li><strong>Tableau d’amortissement</strong> complet (capital + intérêts
++ assurance
+<ul>
+<li>CRD restant par mois).</li>
+</ul></li>
+<li><strong>Graphique</strong> d’évolution.</li>
+<li><strong>Totaux</strong> : payé YTD, intérêts YTD, capital
+remboursé.</li>
+</ul>
+<h2 id="impact-fiscal-automatique">13.5 Impact fiscal automatique</h2>
+<p>Les <strong>intérêts</strong> et <strong>l’assurance crédit</strong>
+sont déduits <strong>automatiquement</strong> du revenu foncier dans le
+calcul fiscal (régime réel). Tu n’as rien à saisir en dépense pour
+ça.</p>
+<hr />
+<h1 id="révisions-de-loyer-irl">14. Révisions de loyer (IRL)</h1>
+<h2 id="à-quoi-ça-sert-11">14.1 À quoi ça sert</h2>
+<p>Réviser le loyer une fois par an selon l’<strong>Indice de Référence
+des Loyers</strong> (INSEE), si la clause est dans le bail.</p>
+<h2 id="où-trouver-11">14.2 Où trouver</h2>
+<p><code>Fiche logement → Révisions de loyer → +</code></p>
+<h2 id="saisir-une-révision">14.3 Saisir une révision</h2>
+<ul>
+<li><strong>Date d’effet</strong> : généralement à la date anniversaire
+du bail.</li>
+<li><strong>Nouveau loyer HC</strong> + <strong>nouvelles
+charges</strong>.</li>
+<li><strong>Motif</strong> : « Révision IRL T2 2026 » (l’IRL est publié
+chaque trimestre par l’INSEE).</li>
+</ul>
+<p>L’app calcule automatiquement le <strong>loyer effectif</strong> mois
+par mois pour toute l’année, en tenant compte de la révision la plus
+récente avant chaque mois.</p>
+<h2 id="comment-trouver-le-bon-irl">14.4 Comment trouver le bon IRL</h2>
+<p>Site officiel INSEE : <a
+href="https://www.insee.fr/fr/statistiques/serie/001515333"
+class="uri">https://www.insee.fr/fr/statistiques/serie/001515333</a></p>
+<p>Formule :</p>
+<pre><code>Nouveau loyer = Ancien loyer × (IRL nouveau / IRL ancien)</code></pre>
+<p>📝 La hausse ne peut <strong>pas excéder</strong> l’évolution de
+l’IRL sur la période.</p>
+<hr />
+<h1 id="fiscalité">15. Fiscalité</h1>
+<h2 id="à-quoi-ça-sert-12">15.1 À quoi ça sert</h2>
+<p>Calculer automatiquement chaque année l’impôt que tu dois payer au
+titre des revenus fonciers, en tenant compte de :</p>
+<ul>
+<li>Toutes les recettes (quittances)</li>
+<li>Toutes les charges déductibles (dépenses + intérêts crédit)</li>
+<li>Le régime applicable (micro-foncier / réel)</li>
+<li>Le dispositif (Pinel, Borloo)</li>
+<li>Tes paramètres fiscaux foyer (parts, autres revenus)</li>
+<li>Les réductions Pinel/Denormandie</li>
+<li>Les déficits reportables</li>
+<li>Le quotient familial</li>
+</ul>
+<h2 id="où-trouver-12">15.2 Où trouver</h2>
+<p><code>Accueil → Tableau de bord → bouton « Fiscalité »</code></p>
+<h2 id="lécran">15.3 L’écran</h2>
+<ul>
+<li><strong>Sélection de l’année</strong> : flèches gauche/droite.</li>
+<li><strong>Synthèse</strong> : revenu foncier brut, charges totales,
+revenu net, déficit éventuel, impôt additionnel + PS.</li>
+<li><strong>Détail par logement</strong> : recettes, charges, intérêts,
+assurance.</li>
+<li><strong>Réductions</strong> Pinel/Denormandie appliquées.</li>
+<li><strong>TMI</strong> estimée.</li>
+<li><strong>Déficits reportables</strong> consommés et restants.</li>
+</ul>
+<h2 id="détail-technique-complet">15.4 Détail technique complet</h2>
+<p>Le calcul est documenté dans le fichier
+<strong><code>FISCALITE_DETAILS.md</code></strong> à la racine du projet
+(24 sections détaillées).</p>
+<hr />
+<h1 id="sci">16. SCI</h1>
+<h2 id="à-quoi-ça-sert-13">16.1 À quoi ça sert</h2>
+<p>Gérer les biens détenus via une <strong>Société Civile
+Immobilière</strong> :</p>
+<ul>
+<li><strong>SCI à l’IR</strong> : transparente, chaque associé déclare
+sa quote-part de revenus fonciers. Calcul identique à de la location
+nue.</li>
+<li><strong>SCI à l’IS</strong> : la société paie son propre impôt sur
+les sociétés. Les associés ne sont imposés que sur les dividendes
+distribués.</li>
+</ul>
+<h2 id="où-trouver-13">16.2 Où trouver</h2>
+<p><code>Fiscalité → icône 🏛️ (en haut à droite) → Mes SCI</code></p>
+<h2 id="créer-une-sci">16.3 Créer une SCI</h2>
+<p>Bouton + flottant :</p>
+<ul>
+<li><strong>Nom</strong> : « SCI Familiale Dupont ».</li>
+<li><strong>Régime</strong> : IR (transparent) ou IS.</li>
+</ul>
+<h2 id="bascule-ir-is">16.4 Bascule IR → IS</h2>
+<p>Une SCI initialement à l’IR peut <strong>opter pour l’IS</strong> à
+tout moment (option irrévocable dans les 5 premières années). Pour
+l’enregistrer dans l’app :</p>
+<ul>
+<li>Sur la SCI à l’IR, saisis l’<strong>année de bascule</strong> dans
+le formulaire d’édition.</li>
+<li>À partir de cette année (incluse), elle sera traitée à l’IS dans
+tous les calculs.</li>
+</ul>
+<h2 id="sci-à-lis-détails">16.5 SCI à l’IS — détails</h2>
+<p>Pour chaque exercice :</p>
+<ul>
+<li><strong>Recettes</strong> : somme des quittances des logements de la
+SCI.</li>
+<li><strong>Charges</strong> : somme des dépenses + intérêts crédit +
+amortissement annuel (champ libre par logement).</li>
+<li><strong>Bénéfice imposable</strong> = recettes − charges.</li>
+<li><strong>IS</strong> = 15 % jusqu’à 42 500 € + 25 % au-delà.</li>
+<li><strong>Distribution</strong> : montant que tu décides de distribuer
+aux associés cette année. Soumis au <strong>PFU 30 %</strong> (12,8 % IR
++ 17,2 % PS).</li>
+</ul>
+<p>Tu peux saisir la distribution depuis le formulaire de la SCI, année
+par année.</p>
+<h2 id="affichage">16.6 Affichage</h2>
+<p>Chaque SCI a sa card avec :</p>
+<ul>
+<li>Nom + régime appliqué cette année (badge coloré).</li>
+<li>Indicateur « IR → IS dès 2027 » si bascule prévue.</li>
+<li>Nombre de logements rattachés.</li>
+<li>Si IS : breakdown complet (recettes / charges / amortissement /
+bénéfice / IS / dividendes / PFU).</li>
+</ul>
+<h2 id="rattacher-un-logement-à-une-sci">16.7 Rattacher un logement à
+une SCI</h2>
+<p><code>Fiche logement → édition → Statut fiscal = SCI → Société de détention → choisis la SCI</code></p>
+<p>Si SCI à l’IS, saisis aussi l’<strong>amortissement annuel</strong>
+du bâti.</p>
+<hr />
+<h1 id="tableau-de-bord-finance">17. Tableau de bord finance</h1>
+<h2 id="à-quoi-ça-sert-14">17.1 À quoi ça sert</h2>
+<p>Une vue d’ensemble synthétique de tes finances locatives sur une
+année.</p>
+<h2 id="où-trouver-14">17.2 Où trouver</h2>
+<p><code>Accueil → bandeau FINANCES → Tableau de bord</code></p>
+<h2 id="kpi-affichés">17.3 KPI affichés</h2>
+<ul>
+<li><strong>Encaissés</strong> : montant total des quittances de
+l’année.</li>
+<li><strong>Attendus</strong> : montant théorique selon le loyer ×
+occupation.</li>
+<li><strong>% d’encaissement</strong> : pourcentage.</li>
+<li><strong>En retard</strong> : montant + nombre de quittances dues
+(cliquable).</li>
+<li><strong>Dépenses + crédits</strong> annuels + moyenne mensuelle
+(calculée toujours sur 12).</li>
+</ul>
+<h2 id="bilan-net">17.4 Bilan net</h2>
+<pre><code>Bilan = Recettes − (Dépenses + Crédits + Impôt foncier N-1 + IS des SCI)</code></pre>
+<p>⚠️ L’impôt foncier N-1 (de l’année précédente) est pris en compte car
+c’est l’année où tu le paies effectivement.</p>
+<h2 id="performance-par-logement">17.5 Performance par logement</h2>
+<p>Liste triée par revenu attendu, avec barre de progression. Utile pour
+repérer rapidement quel logement est en retard.</p>
+<h2 id="graphique-mensuel">17.6 Graphique mensuel</h2>
+<p>Courbe <strong>Réel</strong> (encaissé) vs <strong>Attendu</strong>
+sur 12 mois.</p>
+<h2 id="accès-rapides">17.7 Accès rapides</h2>
+<p>Boutons en bas :</p>
+<ul>
+<li>Loyers en retard</li>
+<li>Ajouter dépense</li>
+<li>Générer quittance</li>
+<li>Exporter bilan (sauvegarde)</li>
+<li>Crédits immobiliers</li>
+<li>Fiscalité</li>
+<li>Toutes les dépenses</li>
+<li>Mes SCI</li>
+</ul>
+<hr />
+<h1 id="rappels-et-calendrier">18. Rappels et calendrier</h1>
+<h2 id="à-quoi-ça-sert-15">18.1 À quoi ça sert</h2>
+<p>Ne plus rien oublier : préavis, fin de bail, régularisation des
+charges, expiration des diagnostics. L’app scanne en permanence tes
+données et te propose une <strong>liste chronologique</strong> de tout
+ce qui arrive.</p>
+<h2 id="où-trouver-15">18.2 Où trouver</h2>
+<p><code>Accueil → bandeau GESTION LOCATIVE → Rappels</code></p>
+<h2 id="types-de-rappels-auto-calculés">18.3 Types de rappels
+auto-calculés</h2>
+<ul>
+<li><strong>Préavis bailleur</strong> : N mois avant la fin du bail
+(selon le type : 6 mois vide, 3 meublé, 1 mobilité).</li>
+<li><strong>Préavis locataire</strong> : idem côté locataire.</li>
+<li><strong>Fin de bail</strong> : à la date de fin.</li>
+<li><strong>Régularisation annuelle des charges</strong> : à la date
+anniversaire du bail.</li>
+<li><strong>Diagnostic expiré</strong> (badge rouge) ou <strong>proche
+d’expirer</strong> (orange).</li>
+</ul>
+<h2 id="sévérité">18.4 Sévérité</h2>
+<p>Chaque rappel a une couleur :</p>
+<ul>
+<li><strong>Bleu / violet</strong> : information, échéance future.</li>
+<li><strong>Orange</strong> : échéance dans les 30 jours ou diagnostic
+proche d’expirer.</li>
+<li><strong>Rouge</strong> : urgent ou déjà dépassé.</li>
+</ul>
+<h2 id="compteur-sur-laccueil">18.5 Compteur sur l’accueil</h2>
+<p>Sur la section « Rappels » du menu Accueil :</p>
+<ul>
+<li>Total des rappels actifs.</li>
+<li>Nombre d’urgents (rouge) s’il y en a.</li>
+</ul>
+<h2 id="ajout-au-calendrier-natif">18.6 Ajout au calendrier natif</h2>
+<p>Sur chaque rappel, bouton <strong>« Ajouter au calendrier »</strong>
+:</p>
+<ul>
+<li>iOS / macOS : ajoute dans Calendar.app (Apple).</li>
+<li>Android : ajoute dans Google Agenda (ou autre app par défaut).</li>
+<li>Linux : non supporté nativement.</li>
+</ul>
+<p>L’événement est créé à 9h le jour J, durée 1h.</p>
+<hr />
+<h1 id="export-comptabilité-csv">19. Export comptabilité CSV</h1>
+<h2 id="à-quoi-ça-sert-16">19.1 À quoi ça sert</h2>
+<p>Exporter toute la compta de l’année en un fichier
+<strong>CSV</strong> ouvrable dans Excel, Numbers, Google Sheets, ou
+directement importable dans Indy, Quickbooks, etc., pour ton
+expert-comptable.</p>
+<h2 id="où-trouver-16">19.2 Où trouver</h2>
+<p><code>Accueil → bandeau FINANCES → Export comptabilité (CSV)</code></p>
+<h2 id="contenu-du-fichier">19.3 Contenu du fichier</h2>
+<p>Format <code>comptabilite_&lt;année&gt;.csv</code>, délimiteur
+<code>;</code>, UTF-8.</p>
+<p>Trois sections :</p>
+<ol type="1">
+<li><strong>Quittances</strong> (recettes) : Date, Logement, Adresse,
+Locataire, Période, Notes, Total, Loyer HC, Charges, Hash.</li>
+<li><strong>Dépenses</strong> : Date, Logement, Catégorie, Libellé,
+Montant (négatif), Hash.</li>
+<li><strong>Crédits immobiliers</strong> : ligne par crédit actif
+l’année, total des mensualités annuelles.</li>
+</ol>
+<p>Lignes de synthèse : Total recettes, total dépenses, <strong>Bilan
+net</strong>.</p>
+<h2 id="partage">19.4 Partage</h2>
+<p>Le fichier généré est immédiatement proposé au partage via le
+share-sheet de l’OS : mail, AirDrop, Drive…</p>
+<hr />
+<h1 id="partage-avec-un-locataire">20. Partage avec un locataire</h1>
+<h2 id="à-quoi-ça-sert-17">20.1 À quoi ça sert</h2>
+<p>Transmettre à ton locataire de manière <strong>chiffrée</strong> et
+<strong>traçable</strong> :</p>
+<ul>
+<li>Les quittances qu’il peut télécharger.</li>
+<li>L’EDL d’entrée pour qu’il en ait une copie.</li>
+<li>Le contrat de bail pour son archivage.</li>
+</ul>
+<h2 id="où-trouver-17">20.2 Où trouver</h2>
+<p><code>Accueil → bandeau FINANCES → Partager avec un locataire</code></p>
+<h2 id="workflow-étape-par-étape">20.3 Workflow étape par étape</h2>
+<h3 id="étape-a-que-partager">Étape A : Que partager ?</h3>
+<p>Coche les <strong>types de documents</strong> :</p>
+<ul>
+<li><strong>Quittances</strong></li>
+<li><strong>États des lieux</strong></li>
+<li><strong>Bail</strong> (le contrat)</li>
+</ul>
+<h3 id="étape-b-destinataire">Étape B : Destinataire</h3>
+<p>Choisis le locataire dans la liste.</p>
+<h3 id="étape-c-sélection-détaillée-des-quittances">Étape C : Sélection
+détaillée des quittances</h3>
+<p>Une section <strong>« Quittances à inclure »</strong> apparaît avec
+<strong>toutes les quittances de ce locataire</strong>, dans l’ordre
+chronologique inverse. Toutes sont <strong>pré-cochées</strong>. Tu peux
+:</p>
+<ul>
+<li><strong>Décocher individuellement</strong> celles que tu ne veux pas
+envoyer.</li>
+<li>Cliquer sur <strong>« Tout »</strong> pour tout (re)cocher.</li>
+<li>Cliquer sur <strong>« Aucune »</strong> pour tout décocher.</li>
+</ul>
+<h3 id="étape-d-méthode-de-transfert">Étape D : Méthode de
+transfert</h3>
+<ul>
+<li><strong>Bluetooth</strong> : proche.</li>
+<li><strong>AirDrop</strong> : iPhone/Mac entre Apple.</li>
+<li><strong>QR code</strong> : pratique en présentiel.</li>
+<li><strong>Email</strong> : pièce jointe.</li>
+</ul>
+<h3 id="étape-e-démarrer">Étape E : Démarrer</h3>
+<p>Tape sur <strong>« Démarrer »</strong>.</p>
+<p>L’app génère un fichier <code>.adls</code> chiffré contenant tout ce
+que tu as coché, et un <strong>code à 8 caractères</strong>.</p>
+<h3 id="étape-f-communiquer-le-code">Étape F : Communiquer le code</h3>
+<p>⚠️ Le code à 8 caractères est <strong>affiché à l’écran</strong>. Tu
+dois le <strong>communiquer oralement</strong> au locataire (téléphone,
+SMS, en personne). <strong>Ne l’écris pas dans le mail</strong> —
+l’intérêt du chiffrement est que le fichier seul est inutile sans le
+code.</p>
+<h3 id="étape-g-le-locataire-reçoit">Étape G : Le locataire reçoit</h3>
+<p>Côté ADDA Locataire, il :</p>
+<ul>
+<li>Reçoit le fichier <code>.adls</code>.</li>
+<li>L’ouvre dans son app.</li>
+<li>Saisit le code que tu lui as donné.</li>
+<li>Voit tes documents dans « Documents reçus ».</li>
+<li>Tape sur un EDL → <strong>ouverture directe du PDF avec
+photos</strong>.</li>
+</ul>
+<hr />
+<h1 id="sauvegarde-et-restauration">21. Sauvegarde et restauration</h1>
+<h2 id="pourquoi-cest-crucial">21.1 Pourquoi c’est crucial</h2>
+<p>L’app ne synchronise rien sur Internet. Si tu <strong>perds ton
+appareil</strong> sans sauvegarde, <strong>toutes tes données sont
+définitivement perdues</strong>.</p>
+<p><strong>Fais une sauvegarde au moins une fois par mois.</strong></p>
+<h2 id="où-trouver-18">21.2 Où trouver</h2>
+<p><code>Accueil → bandeau FINANCES → Sauvegarde &amp; restauration</code></p>
+<h2 id="exporter-une-sauvegarde">21.3 Exporter une sauvegarde</h2>
+<ol type="1">
+<li>Tape sur <strong>« Exporter »</strong>.</li>
+<li>L’app te demande une <strong>passphrase</strong> (mot de passe
+long).</li>
+<li>Saisis une passphrase forte : 16+ caractères, mélange lettres /
+chiffres / symboles. <strong>NOTE-LA QUELQUE PART DE SÛR</strong>
+(gestionnaire de mots de passe, coffre-fort).</li>
+<li>L’app génère un fichier <strong><code>.adlb</code></strong>
+chiffré.</li>
+<li>Le fichier est partagé via share-sheet : sauvegarde-le sur :
+<ul>
+<li>Ton <strong>iCloud Drive</strong> / Google Drive / pCloud.</li>
+<li>Un <strong>disque externe</strong>.</li>
+<li>Une <strong>clé USB</strong>.</li>
+<li>Ton <strong>mail</strong> (à toi-même).</li>
+</ul></li>
+</ol>
+<p>⚠️ <strong>Sans la passphrase, le <code>.adlb</code> est
+irrécupérable.</strong> Aucune récupération possible (c’est le but du
+chiffrement).</p>
+<h2 id="contenu-dun-.adlb">21.4 Contenu d’un <code>.adlb</code></h2>
+<p><strong>Tout</strong> : profil bailleur, logements, plans, photos
+(chemins), murs extérieurs, locataires, EDL avec photoCapturedAt,
+quittances, dépenses, crédits, révisions, catégories perso, paramètres
+fiscaux complets, SCI + distributions, <strong>contrats de bail +
+avenants + diagnostics</strong>.</p>
+<h2 id="restaurer">21.5 Restaurer</h2>
+<p>Deux modes :</p>
+<h3 id="mode-fusionner-recommandé-en-cas-de-doute">Mode « Fusionner »
+(recommandé en cas de doute)</h3>
+<p>Ajoute les données du backup à celles présentes localement. Si
+conflit sur un même élément (même <code>id</code>), l’app garde la
+version la plus récente (comparaison <code>updatedAt</code>).</p>
+<h3 id="mode-restaurer-remplacer">Mode « Restaurer » (= remplacer)</h3>
+<p>⚠️ <strong>Destructif</strong> : efface <strong>TOUT</strong>
+localement et remplace par le backup. Utile sur un nouvel appareil ou
+pour repartir d’un état propre.</p>
+<h3 id="procédure">Procédure</h3>
+<ol type="1">
+<li>Tape sur <strong>« Restaurer une sauvegarde »</strong>.</li>
+<li>Choisis le <code>.adlb</code>.</li>
+<li>Saisis la passphrase.</li>
+<li>Choisis Fusion ou Restaurer (l’app demande confirmation).</li>
+</ol>
+<h2 id="dossier-adda-bailleur-document">21.6 Dossier « ADDA Bailleur
+document »</h2>
+<p>Les <code>.adlb</code> que tu reçois de l’extérieur (ou tes propres
+exports archivés) sont stockés dans un dossier nommé <strong>« ADDA
+Bailleur document »</strong> :</p>
+<ul>
+<li>iOS / macOS : visible dans l’app <strong>Fichiers</strong>.</li>
+<li>Android :
+<code>Android/data/com.addabenattia.addalocation/files/ADDA Bailleur document/</code>.</li>
+</ul>
+<p>L’app conserve les <strong>10 derniers</strong> backups en FIFO (le
+11ᵉ écrase le 1ᵉʳ).</p>
+<hr />
+<h1 id="synchronisation-entre-appareils">22. Synchronisation entre
+appareils</h1>
+<h2 id="le-principe">22.1 Le principe</h2>
+<p>Aucune sync automatique : chaque appareil a sa propre base chiffrée.
+Tu décides quand et comment synchroniser.</p>
+<h2 id="méthode-recommandée">22.2 Méthode recommandée</h2>
+<ol type="1">
+<li>Désigne <strong>un appareil principal</strong> (le plus pratique à
+utiliser au quotidien, par exemple ton Mac).</li>
+<li>Quand tu fais des modifications importantes (saisie d’un nouveau
+bail, génération PDF, etc.), <strong>exporte un
+<code>.adlb</code></strong> depuis cet appareil.</li>
+<li>Transfère le <code>.adlb</code> aux autres appareils :
+<ul>
+<li>iPhone : AirDrop, Mail, Drive.</li>
+<li>Autre Mac : AirDrop.</li>
+<li>Téléphone Android : Drive, pCloud, transfert USB.</li>
+</ul></li>
+<li>Sur chaque autre appareil, <strong>« Restaurer une sauvegarde
+»</strong> en mode <strong>Remplacer</strong>.</li>
+</ol>
+<p>Ainsi tous les appareils sont identiques après chaque sync.</p>
+<p>💡 <strong>Évite la fusion à long terme</strong> entre appareils qui
+divergent ; ça peut créer des doublons ou perdre des modifications selon
+les <code>updatedAt</code>. Préfère un appareil maître + replace sur les
+autres.</p>
+<hr />
+<h1 id="sécurité-et-confidentialité">23. Sécurité et
+confidentialité</h1>
+<h2 id="chiffrement-local">23.1 Chiffrement local</h2>
+<p>Toutes les données stockées par l’app sont <strong>chiffrées
+AES-256</strong> avec une clé unique générée à l’installation :</p>
+<ul>
+<li><strong>iOS / macOS</strong> : la clé est dans le
+<strong>Keychain</strong> d’Apple (impossible à extraire sans le mot de
+passe de session).</li>
+<li><strong>Android</strong> : la clé est dans le
+<strong>Keystore</strong> (HSM matériel sur les appareils récents).</li>
+<li><strong>Linux / Windows</strong> : fichier protégé par les
+permissions utilisateur.</li>
+</ul>
+<p>Si quelqu’un récupère ton téléphone et accède au stockage brut, il ne
+verra que du chiffré illisible.</p>
+<h2 id="chiffrement-des-fichiers-déchange">23.2 Chiffrement des fichiers
+d’échange</h2>
+<table>
+<thead>
+<tr>
+<th>Fichier</th>
+<th>Sens</th>
+<th>Algorithme</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.adlb</code></td>
+<td>Backup complet</td>
+<td>AES-GCM + PBKDF2 200 000 iter</td>
+</tr>
+<tr>
+<td><code>.adls</code></td>
+<td>Partage locataire</td>
+<td>AES-GCM + PBKDF2 200 000 iter</td>
+</tr>
+<tr>
+<td><code>.adlr</code></td>
+<td>Retour signature</td>
+<td>AES-GCM + PBKDF2 200 000 iter</td>
+</tr>
+<tr>
+<td><code>.adli</code></td>
+<td>Demande intervention</td>
+<td>AES-GCM + PBKDF2 200 000 iter</td>
+</tr>
+</tbody>
+</table>
+<p>Tous ces fichiers commencent par le <strong>magic byte « ADLB
+»</strong> pour être identifiés comme produits par ADDA.</p>
+<h2 id="aucune-transmission-internet">23.3 Aucune transmission
+Internet</h2>
+<p>L’app ne contacte <strong>aucun serveur</strong>. Tous les échanges
+entre tes appareils ou avec le locataire se font via les mécanismes de
+partage de l’OS (AirDrop, Bluetooth, Mail, Drive, USB).</p>
+<h2 id="tes-obligations-rgpd">23.4 Tes obligations RGPD</h2>
+<p>En tant que bailleur, tu collectes des <strong>données
+personnelles</strong> de tes locataires. Tu es <strong>responsable du
+traitement</strong> au sens du RGPD :</p>
+<ul>
+<li>Tu dois pouvoir leur fournir un <strong>export</strong> de leurs
+données sur demande (utilise « Partager avec un locataire » pour leur
+envoyer leur dossier complet).</li>
+<li>Tu dois <strong>supprimer</strong> leurs données 5 ans après la fin
+du bail (obligation fiscale parallèle).</li>
+<li>Tu ne dois <strong>pas transmettre</strong> leurs coordonnées à des
+tiers non autorisés.</li>
+<li>Tu dois conserver les données de manière <strong>sécurisée</strong>
+— l’app le fait pour toi avec le chiffrement AES-256.</li>
+</ul>
+<p>Les mentions RGPD obligatoires sont déjà incluses dans le PDF de bail
+généré par l’app.</p>
+<hr />
+<h1 id="foire-aux-questions">24. Foire aux questions</h1>
+<h2 id="jai-oublié-ma-passphrase-de-sauvegarde-comment-récupérer">J’ai
+oublié ma passphrase de sauvegarde, comment récupérer ?</h2>
+<p>Impossible. C’est le but du chiffrement. Recommence à zéro depuis tes
+autres appareils si tu en as.</p>
+<h2 id="mon-iphone-est-cassé-comment-récupérer-mes-données">Mon iPhone
+est cassé, comment récupérer mes données ?</h2>
+<p>Si tu avais une sauvegarde <code>.adlb</code> sur iCloud ou un autre
+appareil : installe l’app sur un nouvel iPhone, « Restaurer une
+sauvegarde », tu récupères tout.</p>
+<h2 id="sans-sauvegarde-0-récupération.">Sans sauvegarde : 0
+récupération.</h2>
+<h2 id="puis-je-avoir-lapp-sur-mon-mac-et-mon-iphone">Puis-je avoir
+l’app sur mon Mac ET mon iPhone ?</h2>
+<p>Oui. Synchronise manuellement avec un <code>.adlb</code> (cf. §
+22).</p>
+<h2 id="comment-imprimer-un-contrat-de-bail">Comment imprimer un contrat
+de bail ?</h2>
+<p>Génère le PDF (bouton « Générer/régénérer le PDF »). Le viewer natif
+s’ouvre. Bouton imprimer en haut.</p>
+<h2 id="le-locataire-ne-reçoit-pas-mon-.adls-par-email">Le locataire ne
+reçoit pas mon <code>.adls</code> par email</h2>
+<ul>
+<li>Vérifie qu’il a bien ADDA Locataire installée.</li>
+<li>Demande-lui d’ouvrir la pièce jointe → l’app s’ouvre
+normalement.</li>
+<li>Sinon, transmets le fichier via Drive ou USB.</li>
+</ul>
+<h2 id="les-diagnostics-sont-en-rouge-sur-la-fiche-logement">Les
+diagnostics sont en rouge sur la fiche logement</h2>
+<p>C’est qu’ils sont <strong>expirés</strong>. Va dans Diagnostics →
+édite ou ajoute un nouveau diagnostic à jour.</p>
+<h2 id="le-calcul-dimpôt-foncier-me-semble-bizarre">Le calcul d’impôt
+foncier me semble bizarre</h2>
+<p>Vérifie tes paramètres fiscaux (parts, autres revenus). La doc
+complète du calcul est dans <code>FISCALITE_DETAILS.md</code>.</p>
+<h2 id="comment-ajouter-une-catégorie-de-dépense-personnalisée">Comment
+ajouter une catégorie de dépense personnalisée ?</h2>
+<p>Lors de la création d’une dépense, dans le dropdown des catégories :
+option « + Ajouter une catégorie ».</p>
+<h2 id="lapp-rame-sur-les-gros-logements-100-edl">L’app rame sur les
+gros logements (&gt; 100 EDL)</h2>
+<p>L’app est optimisée pour ~1000 entrées par type. Au-delà, considère
+archiver les anciens EDL (export <code>.adlb</code> + suppression
+locale).</p>
+<hr />
+<p><em>Fin de la notice d’utilisation.</em></p>
+<p><em>Pour la documentation technique du calcul fiscal détaillé,</em>
+<em>voir le fichier <code>FISCALITE_DETAILS.md</code> à la racine du
+projet.</em></p>
+<p><em>ADDA Bailleur — édition 2026.</em></p>
+</body>
+</html>

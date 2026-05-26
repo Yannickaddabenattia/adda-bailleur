@@ -1,17 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../models/user_role.dart';
+import '../../core/widgets/hover_card.dart';
+import '../../models/locataire.dart';
+import '../../models/logement.dart';
+import '../../services/credit_service.dart';
+import '../../services/depense_service.dart';
+import '../../services/etat_des_lieux_service.dart';
+import '../../services/locataire_service.dart';
+import '../../services/logement_service.dart';
+import '../../services/quittance_service.dart';
 import '../../services/user_service.dart';
-import '../../widgets/immutable_badge.dart';
+import '../../services/compta_export_service.dart';
+import '../../services/rappel_service.dart';
 import '../backup/backup_screen.dart';
 import '../documents/documents_screen.dart';
 import '../etat_des_lieux/etat_des_lieux_list_screen.dart';
-import '../locataires/locataire_list_screen.dart';
+import '../finance/finance_dashboard_screen.dart';
+import '../locataires/mes_locataires_screen.dart';
+import '../logements/logement_form_screen.dart';
+import '../rappels/rappels_screen.dart';
 import '../logements/logement_list_screen.dart';
+import '../quittances/quittance_form_screen.dart';
 import '../quittances/quittance_list_screen.dart';
-import '../share/received_bundle_list_screen.dart';
 import '../share/share_with_tenant_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -20,173 +34,380 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<UserService>().current;
-    if (profile == null) {
-      return const Scaffold(body: SizedBox.shrink());
+    if (profile == null) return const SizedBox.shrink();
+
+    final logements = context.watch<LogementService>().all;
+    final locataires = context.watch<LocataireService>().all;
+    final quittances = context.watch<QuittanceService>().all;
+    final edls = context.watch<EtatDesLieuxService>().all;
+    final depenses = context.watch<DepenseService>().all;
+    final credits = context.watch<CreditService>().all;
+
+    final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final now = DateTime.now();
+    final monthName = DateFormat('MMMM', 'fr_FR').format(now);
+
+    final occupiedLogementIds = <String>{
+      for (final l in locataires) ...l.logementIds,
+    };
+    final occupiedCount = logements.where((l) => occupiedLogementIds.contains(l.id)).length;
+    final totalLoyers = logements
+        .where((l) => occupiedLogementIds.contains(l.id))
+        .fold<double>(0, (s, l) => s + l.loyerTTC);
+    final occupationPct = logements.isEmpty
+        ? 0
+        : ((occupiedCount / logements.length) * 100).round();
+
+    // Bilan net YTD (revenu encaissé - dépenses - crédits annualisés YTD)
+    final year = now.year;
+    final revenuYTD = quittances
+        .where((q) => q.periodYear == year)
+        .fold<double>(0, (s, q) => s + q.total);
+    final depensesYTD = depenses
+        .where((d) => d.date.year == year)
+        .fold<double>(0, (s, d) => s + d.montant);
+    var creditsYTD = 0.0;
+    for (final c in credits) {
+      for (var m = 1; m <= now.month; m++) {
+        final dt = DateTime(year, m, 1);
+        if (dt.isBefore(DateTime(c.dateDebut.year, c.dateDebut.month, 1))) {
+          continue;
+        }
+        if (dt.isAfter(c.dateFin)) continue;
+        creditsYTD += c.mensualiteTotale;
+      }
+    }
+    final bilanNet = revenuYTD - depensesYTD - creditsYTD;
+
+    // Première quittance à générer ce mois
+    _PendingQuittance? alert;
+    for (final l in logements) {
+      final ls = locataires
+          .where((x) => x.logementIds.contains(l.id))
+          .toList();
+      for (final loc in ls) {
+        final exists = quittances.any((q) =>
+            q.locataireId == loc.id &&
+            q.logementId == l.id &&
+            q.periodYear == now.year &&
+            q.periodMonth == now.month);
+        if (!exists) {
+          alert = _PendingQuittance(logement: l, locataire: loc);
+          break;
+        }
+      }
+      if (alert != null) break;
     }
 
+    final villes = logements
+        .map((l) => l.ville.trim())
+        .where((v) => v.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    final villeLabel = villes.isEmpty
+        ? 'Aucune ville renseignée'
+        : (villes.length <= 2 ? villes.join(', ') : '${villes.take(2).join(', ')}…');
+
+    final allUpToDate = locataires.isNotEmpty &&
+        locataires.every((loc) => loc.logementIds.every((lid) => quittances.any((q) =>
+            q.locataireId == loc.id &&
+            q.logementId == lid &&
+            q.periodYear == now.year &&
+            q.periodMonth == now.month)));
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Bonjour, ${profile.firstName}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Mon profil',
-            onPressed: () => _showProfile(context),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          _Hero(profile: profile),
+          Transform.translate(
+            offset: const Offset(0, -28),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _KpiStrip(
+                loyers: money.format(totalLoyers),
+                biens: '${logements.length}',
+                occupation: '$occupationPct',
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            child: Column(
+              children: [
+                if (alert != null) ...[
+                  _AlertBanner(
+                    title: 'Quittance de $monthName à générer',
+                    subtitle:
+                        '${alert.locataire.fullName} · ${alert.logement.libelle} · ${money.format(alert.logement.loyerTTC)}',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const QuittanceFormScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _QuickActions(
+                  onQuittance: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const QuittanceFormScreen(),
+                    ),
+                  ),
+                  onAddBien: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LogementFormScreen(),
+                    ),
+                  ),
+                  onEdl: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const EtatDesLieuxListScreen(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _SectionLabel('GESTION LOCATIVE'),
+                _SectionGroup(
+                  items: [
+                    _SectionItem(
+                      icon: Icons.home_outlined,
+                      iconColor: AppColors.primary,
+                      iconBg: AppColors.primary.withValues(alpha: 0.10),
+                      title: 'Mes logements',
+                      subtitle:
+                          '${logements.length} bien${logements.length > 1 ? 's' : ''} · $villeLabel',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const LogementListScreen(),
+                        ),
+                      ),
+                    ),
+                    _SectionItem(
+                      icon: Icons.people_alt_outlined,
+                      iconColor: const Color(0xFF8B5CF6),
+                      iconBg: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+                      title: 'Mes locataires',
+                      subtitle:
+                          '${locataires.length} actif${locataires.length > 1 ? 's' : ''}'
+                          '${allUpToDate ? ' · Tous à jour' : ''}',
+                      trailing: allUpToDate
+                          ? const _StatusPill(
+                              label: 'À jour', color: AppColors.success)
+                          : null,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const MesLocatairesScreen(),
+                        ),
+                      ),
+                    ),
+                    _SectionItem(
+                      icon: Icons.assignment_outlined,
+                      iconColor: AppColors.accent,
+                      iconBg: AppColors.accent.withValues(alpha: 0.12),
+                      title: 'États des lieux',
+                      subtitle:
+                          '${edls.length} document${edls.length > 1 ? 's' : ''} archivé${edls.length > 1 ? 's' : ''}',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const EtatDesLieuxListScreen(),
+                        ),
+                      ),
+                    ),
+                    _RappelsSectionItem(),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                _SectionLabel('FINANCES'),
+                _SectionGroup(
+                  items: [
+                    _SectionItem(
+                      icon: Icons.receipt_long_outlined,
+                      iconColor: AppColors.success,
+                      iconBg: AppColors.success.withValues(alpha: 0.10),
+                      title: 'Quittances de loyer',
+                      subtitle: 'Conformes loi ALUR',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const QuittanceListScreen(),
+                        ),
+                      ),
+                    ),
+                    _SectionItem(
+                      icon: Icons.show_chart_rounded,
+                      iconColor: AppColors.error,
+                      iconBg: AppColors.error.withValues(alpha: 0.10),
+                      title: 'Tableau de bord',
+                      subtitle:
+                          'Bilan net : ${bilanNet >= 0 ? '+ ' : ''}${money.format(bilanNet)}',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const FinanceDashboardScreen(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                _SectionLabel('OUTILS'),
+                _SectionGroup(
+                  items: [
+                    _SectionItem(
+                      icon: Icons.folder_outlined,
+                      iconColor: context.textSecondaryColor,
+                      iconBg: context.textSecondaryColor.withValues(alpha: 0.10),
+                      title: 'Mes documents',
+                      subtitle: 'PDF, contrats, photos',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DocumentsScreen(),
+                        ),
+                      ),
+                    ),
+                    _SectionItem(
+                      icon: Icons.bluetooth_searching,
+                      iconColor: AppColors.primary,
+                      iconBg: AppColors.primary.withValues(alpha: 0.10),
+                      title: 'Partager avec un locataire',
+                      subtitle: 'Bluetooth · AirDrop · Nearby',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ShareWithTenantScreen(),
+                        ),
+                      ),
+                    ),
+                    _SectionItem(
+                      icon: Icons.table_view_outlined,
+                      iconColor: const Color(0xFF0EA5E9),
+                      iconBg: const Color(0xFF0EA5E9).withValues(alpha: 0.10),
+                      title: 'Export comptabilité (CSV)',
+                      subtitle: 'Année courante : recettes + dépenses + crédits',
+                      onTap: () => _exportCompta(context),
+                    ),
+                    _SectionItem(
+                      icon: Icons.shield_outlined,
+                      iconColor: AppColors.success,
+                      iconBg: AppColors.success.withValues(alpha: 0.10),
+                      title: 'Sauvegarde & restauration',
+                      subtitle: 'Export chiffré de toutes vos données',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const BackupScreen(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 120),
+              ],
+            ),
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    );
+  }
+}
+
+class _PendingQuittance {
+  final Logement logement;
+  final Locataire locataire;
+  _PendingQuittance({required this.logement, required this.locataire});
+}
+
+class _Hero extends StatelessWidget {
+  final dynamic profile;
+  const _Hero({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = (profile.firstName.isNotEmpty
+            ? profile.firstName[0]
+            : '') +
+        (profile.lastName.isNotEmpty ? profile.lastName[0] : '');
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F1B3A),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.paddingOf(context).top + 14,
+        20,
+        56,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.primary, AppColors.primaryLight],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+              const Icon(Icons.key_rounded,
+                  color: AppColors.accent, size: 18),
+              const SizedBox(width: 6),
+              const Text(
+                'PROPRIÉTAIRE',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.5,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          profile.role == UserRole.proprietaire
-                              ? Icons.key_rounded
-                              : Icons.home_rounded,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          profile.role.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      profile.fullName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      profile.email,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 14,
+              ),
+              const Spacer(),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: const [
+                    Icon(Icons.notifications_none_rounded,
+                        color: Colors.white, size: 22),
+                    Positioned(
+                      top: 8,
+                      right: 9,
+                      child: CircleAvatar(
+                        radius: 4,
+                        backgroundColor: AppColors.accent,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: profile.role == UserRole.proprietaire
-                    ? const _ProprietaireSections()
-                    : const _LocataireSections(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showProfile(BuildContext context) {
-    final profile = context.read<UserService>().current!;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Row(
-              children: [
-                Text(
-                  'Mon profil',
-                  style: TextStyle(
-                    fontSize: 20,
+              const SizedBox(width: 10),
+              CircleAvatar(
+                radius: 19,
+                backgroundColor: AppColors.accent,
+                child: Text(
+                  initials.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(width: 10),
-                ImmutableBadge(),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _InfoLine(label: 'Rôle', value: profile.role.label),
-            _InfoLine(label: 'Prénom', value: profile.firstName),
-            _InfoLine(label: 'Nom', value: profile.lastName),
-            _InfoLine(label: 'Email', value: profile.email),
-            _InfoLine(
-              label: 'Créé le',
-              value: profile.createdAt.toLocal().toString().split('.').first,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Ces informations sont figées et apparaissent sur tous '
-              'vos documents légaux.',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoLine extends StatelessWidget {
-  final String label;
-  final String value;
-  const _InfoLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Bonjour ${profile.firstName}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'serif',
+              height: 1.1,
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+          const SizedBox(height: 6),
+          const Text(
+            'Voici votre patrimoine ce mois-ci',
+            style: TextStyle(color: Colors.white60, fontSize: 13),
           ),
         ],
       ),
@@ -194,188 +415,466 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-class _ProprietaireSections extends StatelessWidget {
-  const _ProprietaireSections();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        _SectionTile(
-          icon: Icons.apartment_rounded,
-          title: 'Mes logements',
-          subtitle: 'Ajouter, modifier ou supprimer un bien',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LogementListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.people_alt_outlined,
-          title: 'Mes locataires',
-          subtitle: 'Gérer les locataires associés',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const LocataireListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.assignment_outlined,
-          title: 'États des lieux',
-          subtitle: 'Créer et consulter vos états des lieux',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const EtatDesLieuxListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.receipt_long_outlined,
-          title: 'Quittances de loyer',
-          subtitle: 'Générer des quittances conformes loi ALUR',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const QuittanceListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.folder_open_outlined,
-          title: 'Mes documents',
-          subtitle: 'Retrouver et partager tous vos PDF',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const DocumentsScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.bluetooth_searching,
-          title: 'Partager avec un locataire',
-          subtitle: 'Transfert local chiffré (Bluetooth / AirDrop / Nearby)',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const ShareWithTenantScreen(),
-            ),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.shield_outlined,
-          title: 'Sauvegarde & restauration',
-          subtitle: 'Export chiffré de toutes vos données',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const BackupScreen()),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LocataireSections extends StatelessWidget {
-  const _LocataireSections();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        _SectionTile(
-          icon: Icons.assignment_outlined,
-          title: 'Mes états des lieux',
-          subtitle: 'Consulter mes états des lieux',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const EtatDesLieuxListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.receipt_long_outlined,
-          title: 'Mes quittances',
-          subtitle: 'Consulter mes quittances',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const QuittanceListScreen()),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.inbox_outlined,
-          title: 'Documents reçus',
-          subtitle: 'Consulter les partages de mon propriétaire',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const ReceivedBundleListScreen(),
-            ),
-          ),
-        ),
-        _SectionTile(
-          icon: Icons.shield_outlined,
-          title: 'Sauvegarde & restauration',
-          subtitle: 'Export chiffré de toutes mes données',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const BackupScreen()),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SectionTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  const _SectionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
+class _KpiStrip extends StatelessWidget {
+  final String loyers;
+  final String biens;
+  final String occupation;
+  const _KpiStrip({
+    required this.loyers,
+    required this.biens,
+    required this.occupation,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.divider),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black
+                .withValues(alpha: context.isDark ? 0.4 : 0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 4),
           ),
-          child: Row(
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _Kpi(label: 'LOYERS', value: loyers)),
+          _KpiDivider(),
+          Expanded(child: _Kpi(label: 'BIENS', value: biens)),
+          _KpiDivider(),
+          Expanded(
+            child: _Kpi(
+              label: 'OCCUPATION',
+              value: occupation,
+              suffix: '%',
+              valueColor: AppColors.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 30,
+      width: 1,
+      color: context.dividerColor,
+    );
+  }
+}
+
+class _Kpi extends StatelessWidget {
+  final String label;
+  final String value;
+  final String? suffix;
+  final Color? valueColor;
+  const _Kpi({
+    required this.label,
+    required this.value,
+    this.suffix,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: context.textSecondaryColor,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        RichText(
+          text: TextSpan(
+            text: value,
+            style: TextStyle(
+              color: valueColor ?? context.textPrimaryColor,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'serif',
+            ),
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+              if (suffix != null)
+                TextSpan(
+                  text: ' $suffix',
+                  style: TextStyle(
+                    color: valueColor ?? context.textSecondaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                child: Icon(icon, color: AppColors.primary),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _AlertBanner extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _AlertBanner({
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final amber = const Color(0xFFFEF3C7);
+    final amberDark = const Color(0xFFB45309);
+    return HoverCard(
+      onTap: onTap,
+      accent: const Color(0xFFC66E1A),
+      borderRadius: BorderRadius.circular(16),
+      background: context.isDark ? const Color(0xFF3B2D08) : amber,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.access_time_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: amberDark,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: amberDark,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: amberDark),
+        ],
       ),
+    );
+  }
+}
+
+class _QuickActions extends StatelessWidget {
+  final VoidCallback onQuittance;
+  final VoidCallback onAddBien;
+  final VoidCallback onEdl;
+  const _QuickActions({
+    required this.onQuittance,
+    required this.onAddBien,
+    required this.onEdl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.receipt_long_outlined,
+            label: 'Quittance',
+            color: AppColors.success,
+            onTap: onQuittance,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.home_outlined,
+            label: 'Ajouter bien',
+            color: AppColors.primary,
+            onTap: onAddBien,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _QuickAction(
+            icon: Icons.assignment_outlined,
+            label: 'État des lieux',
+            color: const Color(0xFF8B5CF6),
+            onTap: onEdl,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return HoverCard(
+      onTap: onTap,
+      accent: color,
+      borderRadius: BorderRadius.circular(16),
+      background: context.surfaceColor,
+      borderColor: context.dividerColor,
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.textPrimaryColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 0, 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: context.textSecondaryColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionGroup extends StatelessWidget {
+  final List<Widget> items;
+  const _SectionGroup({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      children.add(items[i]);
+      if (i < items.length - 1) {
+        children.add(Divider(
+          height: 1,
+          thickness: 1,
+          indent: 64,
+          endIndent: 12,
+          color: context.dividerColor,
+        ));
+      }
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.dividerColor),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SectionItem extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback onTap;
+
+  const _SectionItem({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return HoverCard(
+      onTap: onTap,
+      accent: iconColor,
+      borderRadius: BorderRadius.zero,
+      background: Colors.transparent,
+      borderColor: Colors.transparent,
+      padding: const EdgeInsets.all(14),
+      clip: false,
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            trailing!,
+          ],
+          const SizedBox(width: 4),
+          Icon(Icons.chevron_right, color: context.textSecondaryColor),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _StatusPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _RappelsSectionItem extends StatelessWidget {
+  const _RappelsSectionItem();
+
+  @override
+  Widget build(BuildContext context) {
+    final rappels = context.watch<RappelService>().compute();
+    final urgents = rappels.where((r) => r.severite >= 2).length;
+    return _SectionItem(
+      icon: Icons.notifications_active_outlined,
+      iconColor: urgents > 0 ? AppColors.error : const Color(0xFF7C3AED),
+      iconBg: (urgents > 0 ? AppColors.error : const Color(0xFF7C3AED))
+          .withValues(alpha: 0.10),
+      title: 'Rappels',
+      subtitle: rappels.isEmpty
+          ? 'Aucun rappel actif'
+          : '${rappels.length} rappel${rappels.length > 1 ? "s" : ""}'
+              '${urgents > 0 ? " · $urgents urgent${urgents > 1 ? "s" : ""}" : ""}',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const RappelsScreen(),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _exportCompta(BuildContext context) async {
+  final year = DateTime.now().year;
+  try {
+    final svc = ComptaExportService();
+    final path = await svc.exportYear(year);
+    if (!context.mounted) return;
+    await Share.shareXFiles(
+      [XFile(path, mimeType: 'text/csv')],
+      subject: 'Comptabilité ADDA Bailleur $year',
+      text: 'Export CSV des recettes, dépenses et crédits de $year.',
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Échec de l\'export : $e')),
     );
   }
 }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-adda-backup">
+    <comment>Sauvegarde ADDA Bailleur</comment>
+    <comment xml:lang="fr">Sauvegarde ADDA Bailleur</comment>
+    <icon name="adda-bailleur"/>
+    <glob pattern="*.adlb"/>
+  </mime-type>
+  <mime-type type="application/x-adda-signed-edl">
+    <comment>État des lieux signé (locataire)</comment>
+    <comment xml:lang="fr">État des lieux signé (locataire)</comment>
+    <icon name="adda-bailleur"/>
+    <glob pattern="*.adlr"/>
+  </mime-type>
+  <mime-type type="application/x-adda-intervention">
+    <comment>Demande d'intervention locataire</comment>
+    <comment xml:lang="fr">Demande d'intervention locataire</comment>
+    <icon name="adda-bailleur"/>
+    <glob pattern="*.adli"/>
+  </mime-type>
+</mime-info>

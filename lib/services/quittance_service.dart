@@ -40,6 +40,14 @@ class QuittanceService extends ChangeNotifier {
     return q;
   }
 
+  /// Remplace une quittance existante par sa version modifiée.
+  /// Le hash d'intégrité doit déjà être à jour (utiliser `Quittance.edit`).
+  Future<Quittance> update(Quittance q) async {
+    await LocalDatabase.quittancesBox.put(q.id, q);
+    notifyListeners();
+    return q;
+  }
+
   Future<void> delete(String id) async {
     await LocalDatabase.quittancesBox.delete(id);
     notifyListeners();

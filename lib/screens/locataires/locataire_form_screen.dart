@@ -11,11 +11,15 @@ import '../../widgets/primary_button.dart';
 class LocataireFormScreen extends StatefulWidget {
   final Locataire? locataire;
   final String? preselectedLogementId;
+  final List<String>? preselectedLogementIds;
+  final bool archiveMode;
 
   const LocataireFormScreen({
     super.key,
     this.locataire,
     this.preselectedLogementId,
+    this.preselectedLogementIds,
+    this.archiveMode = false,
   });
 
   @override
@@ -29,9 +33,25 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
   late TextEditingController _email;
   late TextEditingController _phone;
   late TextEditingController _notes;
+  late TextEditingController _raisonSortie;
+  late TextEditingController _loyerSortie;
+  late TextEditingController _nouvelleAdresse;
+  late TextEditingController _nouveauTelephone;
+  late TextEditingController _nouvelEmail;
   late Set<String> _selectedLogementIds;
   DateTime? _dateEntree;
+  DateTime? _dateSortie;
+  bool _isArchive = false;
   bool _saving = false;
+
+  static const _raisonsCourantes = <String>[
+    'Déménagement',
+    'Fin de bail',
+    'Mutation pro',
+    'Achat immobilier',
+    'Expulsion',
+    'Autre',
+  ];
 
   bool get _isEdit => widget.locataire != null;
 
@@ -44,13 +64,26 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
     _email = TextEditingController(text: l?.email ?? '');
     _phone = TextEditingController(text: l?.phone ?? '');
     _notes = TextEditingController(text: l?.notes ?? '');
+    _raisonSortie = TextEditingController(text: l?.raisonSortie ?? '');
+    _loyerSortie = TextEditingController(
+      text: l?.loyerSortie != null ? l!.loyerSortie!.toStringAsFixed(2) : '',
+    );
+    _nouvelleAdresse = TextEditingController(text: l?.nouvelleAdresse ?? '');
+    _nouveauTelephone = TextEditingController(text: l?.nouveauTelephone ?? '');
+    _nouvelEmail = TextEditingController(text: l?.nouvelEmail ?? '');
     _selectedLogementIds = Set<String>.from(
       l?.logementIds ??
-          (widget.preselectedLogementId != null
-              ? [widget.preselectedLogementId!]
-              : <String>[]),
+          (widget.preselectedLogementIds?.isNotEmpty == true
+              ? widget.preselectedLogementIds!
+              : (widget.preselectedLogementId != null
+                  ? [widget.preselectedLogementId!]
+                  : <String>[])),
     );
     _dateEntree = l?.dateEntree;
+    _dateSortie = l?.dateSortie;
+    _isArchive = widget.archiveMode ||
+        l?.dateSortie != null ||
+        l?.raisonSortie.isNotEmpty == true;
   }
 
   @override
@@ -60,6 +93,11 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
     _email.dispose();
     _phone.dispose();
     _notes.dispose();
+    _raisonSortie.dispose();
+    _loyerSortie.dispose();
+    _nouvelleAdresse.dispose();
+    _nouveauTelephone.dispose();
+    _nouvelEmail.dispose();
     super.dispose();
   }
 
@@ -75,11 +113,37 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
     if (picked != null) setState(() => _dateEntree = picked);
   }
 
+  Future<void> _pickDateSortie() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateSortie ?? now,
+      firstDate: _dateEntree ?? DateTime(now.year - 20),
+      lastDate: DateTime(now.year + 5),
+      locale: const Locale('fr', 'FR'),
+    );
+    if (picked != null) setState(() => _dateSortie = picked);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
 
     final service = context.read<LocataireService>();
+    final loyerSortieVal = _isArchive
+        ? double.tryParse(_loyerSortie.text.replaceAll(',', '.').trim())
+        : null;
+    final dateSortieVal = _isArchive ? _dateSortie : null;
+    final raisonSortieVal =
+        _isArchive ? _raisonSortie.text.trim() : '';
+    String? cleanOpt(TextEditingController c) {
+      if (!_isArchive) return null;
+      final v = c.text.trim();
+      return v.isEmpty ? null : v;
+    }
+    final nouvelleAdresseVal = cleanOpt(_nouvelleAdresse);
+    final nouveauTelephoneVal = cleanOpt(_nouveauTelephone);
+    final nouvelEmailVal = cleanOpt(_nouvelEmail)?.toLowerCase();
     try {
       if (_isEdit) {
         final l = widget.locataire!;
@@ -90,6 +154,12 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
         l.logementIds = _selectedLogementIds.toList();
         l.dateEntree = _dateEntree;
         l.notes = _notes.text.trim();
+        l.dateSortie = dateSortieVal;
+        l.raisonSortie = raisonSortieVal;
+        l.loyerSortie = loyerSortieVal;
+        l.nouvelleAdresse = nouvelleAdresseVal;
+        l.nouveauTelephone = nouveauTelephoneVal;
+        l.nouvelEmail = nouvelEmailVal;
         await service.update(l);
       } else {
         final locataire = Locataire.create(
@@ -100,6 +170,12 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
           logementIds: _selectedLogementIds.toList(),
           dateEntree: _dateEntree,
           notes: _notes.text,
+          dateSortie: dateSortieVal,
+          raisonSortie: raisonSortieVal,
+          loyerSortie: loyerSortieVal,
+          nouvelleAdresse: nouvelleAdresseVal,
+          nouveauTelephone: nouveauTelephoneVal,
+          nouvelEmail: nouvelEmailVal,
         );
         await service.add(locataire);
       }
@@ -120,7 +196,11 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? 'Modifier le locataire' : 'Nouveau locataire'),
+        title: Text(_isEdit
+            ? 'Modifier le locataire'
+            : (widget.archiveMode
+                ? 'Ajouter un ancien locataire'
+                : 'Nouveau locataire')),
       ),
       body: SafeArea(
         child: Form(
@@ -240,6 +320,143 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _isArchive,
+                      onChanged: (v) => setState(() => _isArchive = v),
+                      title: const Text(
+                        'Locataire archivé',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        _isArchive
+                            ? 'Renseigne sortie + raison ci-dessous'
+                            : 'Activer pour ajouter un ancien locataire',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    if (_isArchive) ...[
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _pickDateSortie,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Date de sortie',
+                            prefixIcon: Icon(Icons.event_busy_outlined),
+                          ),
+                          child: Text(
+                            _dateSortie == null
+                                ? 'Non renseignée'
+                                : '${_dateSortie!.day.toString().padLeft(2, '0')}/'
+                                    '${_dateSortie!.month.toString().padLeft(2, '0')}/'
+                                    '${_dateSortie!.year}',
+                            style: TextStyle(
+                              color: _dateSortie == null
+                                  ? AppColors.textSecondary
+                                  : AppColors.textPrimary,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownMenu<String>(
+                        initialSelection: _raisonsCourantes.contains(
+                                _raisonSortie.text)
+                            ? _raisonSortie.text
+                            : null,
+                        controller: _raisonSortie,
+                        label: const Text('Raison de sortie'),
+                        leadingIcon: const Icon(Icons.logout_outlined),
+                        expandedInsets: EdgeInsets.zero,
+                        dropdownMenuEntries: _raisonsCourantes
+                            .map((r) =>
+                                DropdownMenuEntry(value: r, label: r))
+                            .toList(),
+                        onSelected: (_) => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _loyerSortie,
+                        decoration: const InputDecoration(
+                          labelText: 'Dernier loyer (€)',
+                          prefixIcon: Icon(Icons.payments_outlined),
+                          hintText: 'Snapshot au moment de la sortie',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'NOUVELLES COORDONNÉES (APRÈS DÉPART)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          letterSpacing: 1,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _nouvelleAdresse,
+                        decoration: const InputDecoration(
+                          labelText: 'Nouvelle adresse',
+                          prefixIcon: Icon(Icons.location_on_outlined),
+                          hintText: 'Adresse postale après déménagement',
+                        ),
+                        textCapitalization: TextCapitalization.sentences,
+                        maxLines: 2,
+                        minLines: 1,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _nouveauTelephone,
+                        decoration: const InputDecoration(
+                          labelText: 'Nouveau téléphone',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                        keyboardType: TextInputType.phone,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _nouvelEmail,
+                        decoration: const InputDecoration(
+                          labelText: 'Nouvel email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          final t = v?.trim() ?? '';
+                          if (t.isEmpty) return null;
+                          return EmailValidator.validate(t)
+                              ? null
+                              : 'Email invalide';
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _notes,

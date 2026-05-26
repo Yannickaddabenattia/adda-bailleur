@@ -21,6 +21,13 @@ class Quittance {
   final DateTime createdAt;
   String? integrityHash;
 
+  /// Snapshot du nom du bailleur au moment du partage.
+  /// Présent uniquement sur les quittances importées via partage locataire.
+  /// Permet à l'app locataire d'afficher le bon bailleur sur le PDF
+  /// au lieu de réutiliser son propre UserProfile.
+  String? bailleurName;
+  String? bailleurEmail;
+
   Quittance({
     required this.id,
     required this.logementId,
@@ -34,6 +41,8 @@ class Quittance {
     required this.notes,
     required this.createdAt,
     this.integrityHash,
+    this.bailleurName,
+    this.bailleurEmail,
   });
 
   factory Quittance.create({
@@ -59,6 +68,37 @@ class Quittance {
       dateEmission: now,
       notes: notes.trim(),
       createdAt: now,
+    );
+    q.integrityHash = q.computeIntegrityHash();
+    return q;
+  }
+
+  /// Construit une nouvelle quittance basée sur [original] avec les champs
+  /// modifiables remplacés. L'id, le logement, le locataire, la date d'émission
+  /// et la date de création sont préservés. Le hash d'intégrité est recalculé.
+  factory Quittance.edit({
+    required Quittance original,
+    required int periodYear,
+    required int periodMonth,
+    required double loyerHC,
+    required double charges,
+    required DateTime datePaiement,
+    String? notes,
+  }) {
+    final q = Quittance(
+      id: original.id,
+      logementId: original.logementId,
+      locataireId: original.locataireId,
+      periodYear: periodYear,
+      periodMonth: periodMonth,
+      loyerHC: loyerHC,
+      charges: charges,
+      datePaiement: datePaiement,
+      dateEmission: original.dateEmission,
+      notes: (notes ?? original.notes).trim(),
+      createdAt: original.createdAt,
+      bailleurName: original.bailleurName,
+      bailleurEmail: original.bailleurEmail,
     );
     q.integrityHash = q.computeIntegrityHash();
     return q;
@@ -126,13 +166,17 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
       notes: fields[9] as String,
       createdAt: DateTime.parse(fields[10] as String),
       integrityHash: fields[11] as String?,
+      bailleurName: fields[12] as String?,
+      bailleurEmail: fields[13] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Quittance obj) {
+    final hasSnapshot =
+        obj.bailleurName != null || obj.bailleurEmail != null;
+    writer.writeByte(hasSnapshot ? 14 : 12);
     writer
-      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -157,5 +201,12 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
       ..write(obj.createdAt.toUtc().toIso8601String())
       ..writeByte(11)
       ..write(obj.integrityHash);
+    if (hasSnapshot) {
+      writer
+        ..writeByte(12)
+        ..write(obj.bailleurName)
+        ..writeByte(13)
+        ..write(obj.bailleurEmail);
+    }
   }
 }

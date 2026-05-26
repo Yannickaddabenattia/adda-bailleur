@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/user_role.dart';
+import '../../services/incoming_file_handler.dart';
 import '../../services/user_service.dart';
-import '../home/home_screen.dart';
-import '../onboarding/role_selection_screen.dart';
+import '../onboarding/user_info_screen.dart';
+import '../shell/main_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -31,11 +33,18 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => userService.hasProfile
-            ? const HomeScreen()
-            : const RoleSelectionScreen(),
+        builder: (_) {
+          if (!userService.hasProfile) {
+            return const UserInfoScreen(role: UserRole.proprietaire);
+          }
+          return const MainShell();
+        },
       ),
     );
+    // Les fichiers reçus de l'extérieur ne sont poussés qu'une fois le splash
+    // terminé, sinon `pushReplacement` les écraserait.
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => IncomingFileHandler.instance.markReady());
   }
 
   void _showIntegrityError(String message) {
@@ -56,7 +65,8 @@ class _SplashScreenState extends State<SplashScreen> {
               Navigator.of(context).pop();
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(
-                  builder: (_) => const RoleSelectionScreen(),
+                  builder: (_) =>
+                      const UserInfoScreen(role: UserRole.proprietaire),
                 ),
               );
             },

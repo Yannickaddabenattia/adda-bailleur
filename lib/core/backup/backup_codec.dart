@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:pointycastle/export.dart';
 
-/// Format de fichier de sauvegarde chiffré Adda Location.
+/// Format de fichier de sauvegarde chiffré ADDA Bailleur.
 ///
 /// ```
 /// bytes 0..3    : magic "ADLB"
@@ -23,6 +24,23 @@ class BackupCodec {
   static const int _nonceLen = 12;
   static const int _keyLen = 32;
   static const int _pbkdf2Iterations = 200000;
+
+  /// Variante non-bloquante : exécute [encrypt] dans un isolate via
+  /// `compute` pour ne pas geler l'UI pendant le PBKDF2 (≈200 000 iter).
+  static Future<Uint8List> encryptAsync({
+    required String jsonPayload,
+    required String passphrase,
+  }) {
+    return compute(_encryptIsolate, (jsonPayload, passphrase));
+  }
+
+  /// Variante non-bloquante : exécute [decrypt] dans un isolate.
+  static Future<String> decryptAsync({
+    required Uint8List bytes,
+    required String passphrase,
+  }) {
+    return compute(_decryptIsolate, (bytes, passphrase));
+  }
 
   /// Chiffre un payload JSON avec une passphrase.
   static Uint8List encrypt({
@@ -100,6 +118,12 @@ class BackupCodec {
     return out;
   }
 }
+
+Uint8List _encryptIsolate((String, String) args) =>
+    BackupCodec.encrypt(jsonPayload: args.$1, passphrase: args.$2);
+
+String _decryptIsolate((Uint8List, String) args) =>
+    BackupCodec.decrypt(bytes: args.$1, passphrase: args.$2);
 
 class BackupFormatException implements Exception {
   final String message;

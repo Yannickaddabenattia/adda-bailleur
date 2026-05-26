@@ -7,7 +7,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Adda Location</string>
+		<string>ADDA Bailleur</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -15,21 +15,92 @@
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>Adda Location</string>
+		<string>ADDA Bailleur</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>NSCameraUsageDescription</key>
-		<string>Adda Location utilise l'appareil photo pour ajouter des photos aux états des lieux.</string>
+		<string>ADDA Bailleur utilise l'appareil photo pour ajouter des photos aux états des lieux.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
-		<string>Adda Location accède à vos photos pour illustrer les états des lieux.</string>
+		<string>ADDA Bailleur accède à vos photos pour illustrer les états des lieux.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>Adda Location enregistre les photos des états des lieux dans votre bibliothèque.</string>
+		<string>ADDA Bailleur enregistre les photos des états des lieux dans votre bibliothèque.</string>
 		<key>NSDocumentsFolderUsageDescription</key>
-		<string>Adda Location lit et écrit vos fichiers de sauvegarde chiffrés dans l'app Fichiers.</string>
+		<string>ADDA Bailleur lit et écrit vos fichiers de sauvegarde chiffrés dans l'app Fichiers.</string>
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>ADDA Bailleur utilise le réseau Wi-Fi local pour transférer des documents au locataire (QR code), sans cloud ni internet.</string>
 		<key>LSSupportsOpeningDocumentsInPlace</key>
 		<true/>
 		<key>UIFileSharingEnabled</key>
 		<true/>
+		<key>CFBundleDocumentTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeName</key>
+				<string>Sauvegarde ADDA Bailleur</string>
+				<key>LSHandlerRank</key>
+				<string>Owner</string>
+				<key>CFBundleTypeRole</key>
+				<string>Viewer</string>
+				<key>LSItemContentTypes</key>
+				<array>
+					<string>com.addabenattia.addalocation.adlb</string>
+				</array>
+			</dict>
+			<dict>
+				<key>CFBundleTypeName</key>
+				<string>Retour ADDA Locataire</string>
+				<key>LSHandlerRank</key>
+				<string>Owner</string>
+				<key>CFBundleTypeRole</key>
+				<string>Viewer</string>
+				<key>LSItemContentTypes</key>
+				<array>
+					<string>com.addabenattia.adlr</string>
+				</array>
+			</dict>
+		</array>
+		<key>UTExportedTypeDeclarations</key>
+		<array>
+			<dict>
+				<key>UTTypeIdentifier</key>
+				<string>com.addabenattia.addalocation.adlb</string>
+				<key>UTTypeDescription</key>
+				<string>Sauvegarde ADDA Bailleur</string>
+				<key>UTTypeConformsTo</key>
+				<array>
+					<string>public.data</string>
+				</array>
+				<key>UTTypeTagSpecification</key>
+				<dict>
+					<key>public.filename-extension</key>
+					<array>
+						<string>adlb</string>
+					</array>
+				</dict>
+			</dict>
+			<dict>
+				<key>UTTypeIdentifier</key>
+				<string>com.addabenattia.adlr</string>
+				<key>UTTypeDescription</key>
+				<string>Retour ADDA Locataire</string>
+				<key>UTTypeConformsTo</key>
+				<array>
+					<string>public.data</string>
+					<string>public.content</string>
+				</array>
+				<key>UTTypeTagSpecification</key>
+				<dict>
+					<key>public.filename-extension</key>
+					<array>
+						<string>adlr</string>
+					</array>
+					<key>public.mime-type</key>
+					<array>
+						<string>application/x-adda-return</string>
+					</array>
+				</dict>
+			</dict>
+		</array>
 		<key>CFBundleShortVersionString</key>
 		<string>$(FLUTTER_BUILD_NAME)</string>
 		<key>CFBundleSignature</key>
@@ -80,5 +151,12 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>mailto</string>
+			<string>tel</string>
+			<string>telprompt</string>
+			<string>sms</string>
+		</array>
 	</dict>
 </plist>

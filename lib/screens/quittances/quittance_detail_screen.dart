@@ -10,6 +10,7 @@ import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/quittance_service.dart';
 import '../../services/user_service.dart';
+import 'quittance_edit_screen.dart';
 
 class QuittanceDetailScreen extends StatelessWidget {
   final String quittanceId;
@@ -25,7 +26,14 @@ class QuittanceDetailScreen extends StatelessWidget {
     }
     final bailleur = context.watch<UserService>().current;
     final logement = context.watch<LogementService>().byId(q.logementId);
-    final locataire = context.watch<LocataireService>().byId(q.locataireId);
+    final locataireService = context.watch<LocataireService>();
+    final locataire = locataireService.byId(q.locataireId);
+    final colocataires = locataire == null
+        ? const []
+        : locataireService
+            .byLogement(q.logementId)
+            .where((l) => l.id != locataire.id && !l.isArchived && !l.isFutur)
+            .toList();
 
     if (bailleur == null || logement == null || locataire == null) {
       return Scaffold(
@@ -59,6 +67,9 @@ class QuittanceDetailScreen extends StatelessWidget {
                 bailleur: bailleur,
                 logement: logement,
                 locataire: locataire,
+                colocataires: colocataires.cast(),
+                bailleurNameOverride: q.bailleurName,
+                bailleurEmailOverride: q.bailleurEmail,
               );
               await Printing.sharePdf(
                 bytes: await doc.save(),
@@ -78,9 +89,23 @@ class QuittanceDetailScreen extends StatelessWidget {
                     bailleur: bailleur,
                     logement: logement,
                     locataire: locataire,
+                    colocataires: colocataires.cast(),
+                    bailleurNameOverride: q.bailleurName,
+                    bailleurEmailOverride: q.bailleurEmail,
                   );
                   return doc.save();
                 },
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Modifier',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => QuittanceEditScreen(quittanceId: q.id),
+                ),
               );
             },
           ),
@@ -98,6 +123,9 @@ class QuittanceDetailScreen extends StatelessWidget {
             bailleur: bailleur,
             logement: logement,
             locataire: locataire,
+            colocataires: colocataires.cast(),
+            bailleurNameOverride: q.bailleurName,
+            bailleurEmailOverride: q.bailleurEmail,
           );
           return doc.save();
         },

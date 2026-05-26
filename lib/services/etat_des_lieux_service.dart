@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 
 import '../core/storage/local_database.dart';
@@ -40,9 +38,9 @@ class EtatDesLieuxService extends ChangeNotifier {
     return edl;
   }
 
-  /// Enregistre la signature du propriétaire et génère un code temporaire
-  /// à 6 caractères que le locataire devra saisir pour co-signer.
-  Future<String> signAsProprietaire(
+  /// Enregistre la signature du propriétaire et passe l'EDL en attente de
+  /// signature manuscrite du locataire.
+  Future<void> signAsProprietaire(
     EtatDesLieux edl, {
     required String signaturePngBase64,
   }) async {
@@ -51,35 +49,70 @@ class EtatDesLieuxService extends ChangeNotifier {
     }
     edl.proprietaireSignaturePng = signaturePngBase64;
     edl.proprietaireSignatureAt = DateTime.now().toUtc();
-    edl.locataireCode = _generateCode();
     edl.status = EtatDesLieuxStatus.enAttenteSignatureLocataire;
     edl.updatedAt = DateTime.now().toUtc();
     await LocalDatabase.etatDesLieuxBox.put(edl.id, edl);
     notifyListeners();
-    return edl.locataireCode!;
   }
 
-  /// Vérifie le code fourni et finalise l'EDL si correct.
-  Future<void> signAsLocataire(EtatDesLieux edl, String inputCode) async {
+  /// Enregistre la signature manuscrite du locataire et finalise l'EDL.
+  Future<void> signAsLocataire(
+    EtatDesLieux edl, {
+    required String signaturePngBase64,
+  }) async {
     if (edl.status != EtatDesLieuxStatus.enAttenteSignatureLocataire) {
       throw EtatDesLieuxException(
         'Cet EDL n\'est pas en attente de signature locataire.',
       );
     }
-    if (edl.locataireCode == null ||
-        edl.locataireCode!.toUpperCase() != inputCode.trim().toUpperCase()) {
-      throw EtatDesLieuxException('Code invalide.');
-    }
+    edl.locataireSignaturePng = signaturePngBase64;
     edl.locataireSignatureAt = DateTime.now().toUtc();
     edl.status = EtatDesLieuxStatus.finalise;
     edl.updatedAt = DateTime.now().toUtc();
-    // Calcul final du hash d'intégrité — fige le document.
     edl.integrityHash = edl.computeIntegrityHash();
     await LocalDatabase.etatDesLieuxBox.put(edl.id, edl);
     notifyListeners();
   }
 
-  /// Abandonne le processus de signature (code perdu, erreur) avant finalisation.
+  /// Applique une signature locataire reçue par fichier `.adlr` (retour
+  /// signé renvoyé depuis ADDA Locataire). Vérifie que l'EDL existe encore
+  /// en attente de signature et que le hash pré-signature correspond, pour
+  /// éviter d'appliquer une signature à un EDL modifié entre-temps.
+  Future<EtatDesLieux> applyLocataireSignatureFromShare({
+    required String edlId,
+    required String preSignatureHash,
+    required String signaturePngBase64,
+    required DateTime signedAt,
+  }) async {
+    final edl = byId(edlId);
+    if (edl == null) {
+      throw EtatDesLieuxException(
+        'EDL introuvable. La signature ne peut pas être appliquée.',
+      );
+    }
+    if (edl.status != EtatDesLieuxStatus.enAttenteSignatureLocataire) {
+      throw EtatDesLieuxException(
+        'Cet EDL n\'est pas en attente de signature locataire.',
+      );
+    }
+    final expected = edl.computePreSignatureHash();
+    if (expected != preSignatureHash) {
+      throw EtatDesLieuxException(
+        'Le document a été modifié depuis l\'envoi au locataire. '
+        'Signature refusée.',
+      );
+    }
+    edl.locataireSignaturePng = signaturePngBase64;
+    edl.locataireSignatureAt = signedAt.toUtc();
+    edl.status = EtatDesLieuxStatus.finalise;
+    edl.updatedAt = DateTime.now().toUtc();
+    edl.integrityHash = edl.computeIntegrityHash();
+    await LocalDatabase.etatDesLieuxBox.put(edl.id, edl);
+    notifyListeners();
+    return edl;
+  }
+
+  /// Abandonne le processus de signature avant finalisation.
   Future<void> revertToDraft(EtatDesLieux edl) async {
     if (edl.isFinalized) {
       throw EtatDesLieuxException('Impossible : EDL finalisé.');
@@ -88,7 +121,17 @@ class EtatDesLieuxService extends ChangeNotifier {
     edl.proprietaireSignaturePng = null;
     edl.proprietaireSignatureAt = null;
     edl.locataireCode = null;
+    edl.locataireSignaturePng = null;
+    edl.locataireSignatureAt = null;
     edl.updatedAt = DateTime.now().toUtc();
+    await LocalDatabase.etatDesLieuxBox.put(edl.id, edl);
+    notifyListeners();
+  }
+
+  /// Importe un EDL provenant d'un partage locataire (peut être finalisé).
+  /// L'EDL est stocké tel quel — aucun recalcul de hash, ce qui préserve
+  /// la signature originale.
+  Future<void> importFromShare(EtatDesLieux edl) async {
     await LocalDatabase.etatDesLieuxBox.put(edl.id, edl);
     notifyListeners();
   }
@@ -96,22 +139,22 @@ class EtatDesLieuxService extends ChangeNotifier {
   Future<void> delete(String id) async {
     final edl = byId(id);
     if (edl == null) return;
-    if (edl.isFinalized) {
-      throw EtatDesLieuxException(
-        'Impossible de supprimer un EDL finalisé.',
-      );
-    }
     await PhotoStorage.deleteAllForEtat(id);
     await LocalDatabase.etatDesLieuxBox.delete(id);
     notifyListeners();
   }
 
-  static const _codeAlphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  static String _generateCode({int length = 6}) {
-    final rng = Random.secure();
-    return List.generate(length, (_) => _codeAlphabet[rng.nextInt(_codeAlphabet.length)])
-        .join();
-  }
-
   int get count => LocalDatabase.etatDesLieuxBox.length;
+
+  /// Adresse bailleur la plus récemment renseignée parmi les EDL existants
+  /// (utilisée pour pré-remplir un nouvel EDL). Null si aucune trouvée.
+  String? lastBailleurAdresse() {
+    final items = LocalDatabase.etatDesLieuxBox.values
+        .where((e) =>
+            e.bailleurAdresse != null && e.bailleurAdresse!.trim().isNotEmpty)
+        .toList();
+    if (items.isEmpty) return null;
+    items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return items.first.bailleurAdresse;
+  }
 }

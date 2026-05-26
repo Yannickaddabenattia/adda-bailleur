@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -8,6 +9,9 @@ import '../../core/backup/backup_codec.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/backup_service.dart';
 import '../../widgets/primary_button.dart';
+import 'received_backups_screen.dart';
+
+enum _ImportMode { merge, replace }
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -27,13 +31,69 @@ class _BackupScreenState extends State<BackupScreen> {
     try {
       final file = await _service.exportEncrypted(passphrase: passphrase);
       if (!mounted) return;
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/octet-stream')],
-        subject: 'Sauvegarde Adda Location',
-        text:
-            'Sauvegarde chiffrée Adda Location. Conservez ce fichier et '
-            'votre passphrase en lieu sûr.',
-      );
+
+      if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+        const subject = 'Sauvegarde ADDA Bailleur';
+        const body =
+            'Sauvegarde chiffrée ADDA Bailleur en pièce jointe. '
+            'Conservez ce fichier et votre passphrase en lieu sûr.';
+        final opened = await _openMailClientWithAttachment(
+          filePath: file.path,
+          subject: subject,
+          body: body,
+        );
+        if (!mounted) return;
+        if (opened) {
+          if (Platform.isLinux) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                duration: const Duration(seconds: 8),
+                content: Text(
+                  'Mail ouvert. Glissez « ${file.path.split('/').last} » '
+                  'depuis le dossier (déjà sélectionné) dans votre email.',
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content:
+                    Text('Mail ouvert avec la sauvegarde en pièce jointe'),
+              ),
+            );
+          }
+        } else {
+          final fileName = file.path.split(Platform.pathSeparator).last;
+          final location = await fs.getSaveLocation(
+            suggestedName: fileName,
+            acceptedTypeGroups: const [
+              fs.XTypeGroup(label: 'Sauvegarde Adda', extensions: ['zip']),
+            ],
+          );
+          if (location != null) {
+            await File(location.path)
+                .writeAsBytes(await file.readAsBytes(), flush: true);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Sauvegarde enregistrée : ${location.path}'),
+              ),
+            );
+          }
+        }
+      } else {
+        final box = context.findRenderObject() as RenderBox?;
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/octet-stream')],
+          subject: 'Sauvegarde ADDA Bailleur',
+          text:
+              'Sauvegarde chiffrée ADDA Bailleur. Conservez ce fichier et '
+              'votre passphrase en lieu sûr.',
+          sharePositionOrigin: box == null
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       _showError('Export impossible: $e');
@@ -42,10 +102,63 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
+  Future<bool> _openMailClientWithAttachment({
+    required String filePath,
+    required String subject,
+    required String body,
+  }) async {
+    try {
+      if (Platform.isLinux) {
+        await Process.start(
+          'xdg-email',
+          ['--subject', subject, '--body', body, '--attach', filePath],
+          mode: ProcessStartMode.detached,
+        );
+        final dir = File(filePath).parent.path;
+        final hasNautilus = (await Process.run('which', ['nautilus']))
+            .exitCode ==
+            0;
+        if (hasNautilus) {
+          await Process.start(
+            'nautilus',
+            ['--select', filePath],
+            mode: ProcessStartMode.detached,
+          );
+        } else {
+          await Process.start(
+            'xdg-open',
+            [dir],
+            mode: ProcessStartMode.detached,
+          );
+        }
+        return true;
+      }
+      if (Platform.isMacOS) {
+        String escaped(String s) =>
+            s.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+        final script = '''
+tell application "Mail"
+  set newMsg to make new outgoing message with properties {subject:"${escaped(subject)}", content:"${escaped(body)}", visible:true}
+  tell newMsg
+    make new attachment with properties {file name:(POSIX file "${escaped(filePath)}")} at after last paragraph
+  end tell
+  activate
+end tell
+''';
+        final result = await Process.run('osascript', ['-e', script]);
+        return result.exitCode == 0;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _import() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['adlb'],
+      type: Platform.isIOS ? FileType.any : FileType.custom,
+      allowedExtensions:
+          Platform.isIOS ? null : ['adlb', 'zip', 'bin'],
     );
     if (result == null || result.files.single.path == null) return;
     final file = File(result.files.single.path!);
@@ -56,47 +169,62 @@ class _BackupScreenState extends State<BackupScreen> {
     if (passphrase == null) return;
     if (!mounted) return;
 
-    final confirmed = await showDialog<bool>(
+    final mode = await showDialog<_ImportMode>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmer la restauration'),
+        title: const Text('Comment importer ?'),
         content: const Text(
-          'Toutes les données actuelles (logements, locataires, EDL, '
-          'quittances) seront remplacées par celles de la sauvegarde. '
-          'Continuer ?',
+          'Fusionner : vos données actuelles sont conservées et complétées. '
+          'Pour chaque élément présent des deux côtés, la version la plus '
+          'récente est gardée.\n\n'
+          'Remplacer : toutes vos données actuelles (logements, locataires, '
+          'états des lieux, quittances) sont supprimées et remplacées par '
+          'celles du fichier. Les plans de logement locaux sont préservés.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(null),
             child: const Text('Annuler'),
           ),
           TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_ImportMode.merge),
+            child: const Text('Fusionner'),
+          ),
+          TextButton(
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Restaurer'),
+            onPressed: () => Navigator.of(ctx).pop(_ImportMode.replace),
+            child: const Text('Remplacer'),
           ),
         ],
       ),
     );
-    if (confirmed != true) return;
+    if (mode == null) return;
 
     setState(() => _busy = true);
     try {
-      final report = await _service.importEncrypted(
-        bytes: bytes,
-        passphrase: passphrase,
-      );
+      final report = mode == _ImportMode.replace
+          ? await _service.importEncryptedReplace(
+              bytes: bytes,
+              passphrase: passphrase,
+            )
+          : await _service.importEncrypted(
+              bytes: bytes,
+              passphrase: passphrase,
+            );
       if (!mounted) return;
       showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Restauration réussie'),
+          title: Text(mode == _ImportMode.replace
+              ? 'Restauration terminée'
+              : 'Fusion terminée'),
           content: Text(
-            'Profil restauré : ${report.profileRestored ? 'oui' : 'non (conservé)'}\n'
-            'Logements : ${report.logements}\n'
-            'Locataires : ${report.locataires}\n'
-            'États des lieux : ${report.etatsDesLieux}\n'
-            'Quittances : ${report.quittances}',
+            'Profil : ${report.profileRestored ? 'installé' : 'conservé'}\n'
+            'Logements : ${report.logements.describe()}\n'
+            'Locataires : ${report.locataires.describe()}\n'
+            'États des lieux : ${report.etatsDesLieux.describe()}\n'
+            'Quittances : ${report.quittances.describe()}'
+            '${report.duplicatesRemoved > 0 ? '\nDoublons fusionnés : ${report.duplicatesRemoved}' : ''}',
           ),
           actions: [
             TextButton(
@@ -175,8 +303,8 @@ class _BackupScreenState extends State<BackupScreen> {
             ),
             TextButton(
               onPressed: () {
-                final a = ctrl1.text;
-                final b = ctrl2.text;
+                final a = ctrl1.text.trim();
+                final b = ctrl2.text.trim();
                 if (a.length < 8) {
                   setS(() =>
                       error = 'Minimum 8 caractères.');
@@ -238,6 +366,23 @@ class _BackupScreenState extends State<BackupScreen> {
                 onPressed: _busy ? null : _import,
                 loading: _busy,
                 destructive: true,
+              ),
+              const SizedBox(height: 16),
+              _ActionCard(
+                icon: Icons.archive_outlined,
+                title: 'Sauvegardes reçues',
+                description:
+                    'Fichiers .adlb reçus depuis l\'extérieur (AirDrop, '
+                    'Fichiers, partage Android…) et conservés dans '
+                    'l\'application pour un import à tout moment.',
+                button: 'Voir',
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ReceivedBackupsScreen(),
+                          ),
+                        ),
               ),
             ],
           ),

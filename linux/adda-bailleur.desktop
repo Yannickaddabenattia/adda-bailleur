@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ADDA Bailleur
+GenericName=Gestion bailleur
+Comment=Gestion locative complète : logements, locataires, quittances, EDL
+Exec=adda_location %f
+Icon=adda-bailleur
+Terminal=false
+Categories=Office;Finance;
+MimeType=application/x-adda-backup;application/x-adda-signed-edl;application/x-adda-intervention;
+StartupNotify=true

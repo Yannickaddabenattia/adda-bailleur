@@ -56,70 +56,70 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return Scaffold(
       appBar: AppBar(title: const Text('Confirmation définitive')),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Vérifiez vos informations',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+        top: false,
+        bottom: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomInset),
+          children: [
+            const Text(
+              'Vérifiez vos informations',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Après validation, ces champs seront figés définitivement et '
+              'apparaîtront sur tous vos documents légaux.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            _buildRow('Rôle', widget.role.label),
+            _buildRow('Prénom', widget.firstName),
+            _buildRow('Nom', widget.lastName.toUpperCase()),
+            _buildRow('Email', widget.email.toLowerCase()),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppColors.error.withValues(alpha: 0.3),
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Après validation, ces champs seront figés définitivement et '
-                'apparaîtront sur tous vos documents légaux.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-              _buildRow('Rôle', widget.role.label),
-              _buildRow('Prénom', widget.firstName),
-              _buildRow('Nom', widget.lastName.toUpperCase()),
-              _buildRow('Email', widget.email.toLowerCase()),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.3),
-                  ),
+              child: CheckboxListTile(
+                value: _acknowledged,
+                onChanged: (v) => setState(() => _acknowledged = v ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Je reconnais que ces informations sont définitives '
+                  'et ne pourront plus être modifiées.',
+                  style: TextStyle(fontSize: 13),
                 ),
-                child: CheckboxListTile(
-                  value: _acknowledged,
-                  onChanged: (v) => setState(() => _acknowledged = v ?? false),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Je reconnais que ces informations sont définitives '
-                    'et ne pourront plus être modifiées.',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  activeColor: AppColors.error,
-                ),
+                activeColor: AppColors.error,
               ),
-              const Spacer(),
-              PrimaryButton(
-                label: 'Figer définitivement',
-                icon: Icons.lock_outline,
-                loading: _saving,
-                onPressed: _acknowledged ? _confirm : null,
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                child: const Text('Modifier mes informations'),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            PrimaryButton(
+              label: 'Figer définitivement',
+              icon: Icons.lock_outline,
+              loading: _saving,
+              onPressed: _acknowledged ? _confirm : null,
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _saving ? null : () => Navigator.of(context).pop(),
+              child: const Text('Modifier mes informations'),
+            ),
+          ],
         ),
       ),
     );

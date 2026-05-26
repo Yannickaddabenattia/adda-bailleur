@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/hover_card.dart';
 import '../../models/quittance.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
@@ -56,7 +57,8 @@ class _QuittanceCard extends StatelessWidget {
         context.watch<LocataireService>().byId(quittance.locataireId);
     final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
-    return InkWell(
+    return HoverCard(
+      accent: AppColors.primary,
       borderRadius: BorderRadius.circular(16),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
@@ -64,13 +66,8 @@ class _QuittanceCard extends StatelessWidget {
               QuittanceDetailScreen(quittanceId: quittance.id),
         ),
       ),
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
         child: Row(
           children: [
             Container(

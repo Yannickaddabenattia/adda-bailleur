@@ -7,7 +7,7 @@ import 'package:signature/signature.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/etat_des_lieux_service.dart';
 import '../../widgets/primary_button.dart';
-import 'locataire_code_screen.dart';
+import 'locataire_signature_screen.dart';
 
 class SignatureScreen extends StatefulWidget {
   final String edlId;
@@ -52,14 +52,14 @@ class _SignatureScreenState extends State<SignatureScreen> {
       return;
     }
     final base64Png = base64Encode(pngBytes);
-    final code = await service.signAsProprietaire(
+    await service.signAsProprietaire(
       edl,
       signaturePngBase64: base64Png,
     );
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => LocataireCodeScreen(edlId: widget.edlId, code: code),
+        builder: (_) => LocataireSignatureScreen(edlId: widget.edlId),
       ),
     );
   }

@@ -5,10 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/storage/photo_storage.dart';
+import '../../core/storage/photo_watermark.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/element_piece.dart';
 import '../../models/etat_element.dart';
+import '../../models/plan_logement.dart';
 import '../../services/etat_des_lieux_service.dart';
+import '../../services/plan_logement_service.dart';
+import '../logements/plans/wall_photos_screen.dart';
 
 class PieceEditScreen extends StatelessWidget {
   final String edlId;
@@ -27,6 +31,13 @@ class PieceEditScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: Text('Pièce introuvable.')));
     }
 
+    final wallPhotos = _wallPhotosForPiece(
+      context.watch<PlanLogementService>(),
+      logementId: edl.logementId,
+      pieceName: piece.nom,
+      etatId: edl.id,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(piece.nom),
@@ -38,36 +49,112 @@ class PieceEditScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: piece.elements.isEmpty
-          ? _empty(context)
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: piece.elements.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (ctx, i) => _ElementCard(
-                element: piece.elements[i],
-                onEtatChange: (etat) async {
-                  piece.elements[i].etat = etat;
-                  await context.read<EtatDesLieuxService>().save(edl);
-                },
-                onDescriptionChange: (desc) async {
-                  piece.elements[i].description = desc;
-                  await context.read<EtatDesLieuxService>().save(edl);
-                },
-                onAddPhoto: () async {
-                  await _addPhoto(context, i);
-                },
-                onRemovePhoto: (path) async {
-                  piece.elements[i].photoPaths.remove(path);
-                  await PhotoStorage.deleteImage(path);
-                  if (!context.mounted) return;
-                  await context.read<EtatDesLieuxService>().save(edl);
-                },
-                onRename: () => _renameElement(context, i),
-                onDelete: () => _confirmDeleteElement(context, i),
-              ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (wallPhotos.isNotEmpty) ...[
+            _WallPhotosStrip(
+              photos: wallPhotos,
+              onDelete: (photo) => _confirmDeleteWallPhoto(context, photo),
             ),
+            const SizedBox(height: 16),
+          ],
+          if (piece.elements.isEmpty)
+            _empty(context)
+          else
+            ...List.generate(piece.elements.length, (i) {
+              return Padding(
+                padding: EdgeInsets.only(top: i == 0 ? 0 : 10),
+                child: _ElementCard(
+                  element: piece.elements[i],
+                  onEtatChange: (etat) async {
+                    piece.elements[i].etat = etat;
+                    await context.read<EtatDesLieuxService>().save(edl);
+                  },
+                  onDescriptionChange: (desc) async {
+                    piece.elements[i].description = desc;
+                    await context.read<EtatDesLieuxService>().save(edl);
+                  },
+                  onAddPhoto: () async {
+                    await _addPhoto(context, i);
+                  },
+                  onRemovePhoto: (path) async {
+                    final el = piece.elements[i];
+                    final idx = el.photoPaths.indexOf(path);
+                    if (idx >= 0) {
+                      el.photoPaths.removeAt(idx);
+                      if (idx < el.photoCapturedAt.length) {
+                        el.photoCapturedAt.removeAt(idx);
+                      }
+                    }
+                    await PhotoStorage.deleteImage(path);
+                    if (!context.mounted) return;
+                    await context.read<EtatDesLieuxService>().save(edl);
+                  },
+                  onRename: () => _renameElement(context, i),
+                  onDelete: () => _confirmDeleteElement(context, i),
+                ),
+              );
+            }),
+        ],
+      ),
     );
+  }
+
+  Future<void> _confirmDeleteWallPhoto(
+      BuildContext context, WallPhoto photo) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la photo ?'),
+        content: const Text(
+          'La photo sera retirée du plan et de l\'état des lieux. Cette action est définitive.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final svc = context.read<PlanLogementService>();
+    final plan = svc
+        .all()
+        .firstWhere((p) => p.wallPhotos.any((w) => w.id == photo.id));
+    await svc.deleteWallPhoto(photo);
+    plan.wallPhotos.removeWhere((p) => p.id == photo.id);
+    await svc.save(plan);
+  }
+
+  List<WallPhoto> _wallPhotosForPiece(
+    PlanLogementService planService, {
+    required String logementId,
+    required String pieceName,
+    required String etatId,
+  }) {
+    final norm = pieceName.trim().toLowerCase();
+    final plans = planService.byLogement(logementId);
+    final out = <WallPhoto>[];
+    for (final plan in plans) {
+      for (final p in plan.wallPhotos) {
+        if (p.roomName.trim().toLowerCase() == norm && p.etatId == etatId) {
+          out.add(p);
+        }
+      }
+    }
+    out.sort((a, b) {
+      final c = a.wallNumber.compareTo(b.wallNumber);
+      if (c != 0) return c;
+      return a.takenAt.compareTo(b.takenAt);
+    });
+    return out;
   }
 
   Widget _empty(BuildContext context) {
@@ -224,12 +311,26 @@ class PieceEditScreen extends StatelessWidget {
     if (!context.mounted) return;
     final service = context.read<EtatDesLieuxService>();
     final edl = service.byId(edlId)!;
+    final piece = edl.pieces.firstWhere((p) => p.id == pieceId);
+    final element = piece.elements[elementIndex];
     final storedPath = await PhotoStorage.saveImage(
       etatId: edl.id,
       sourcePath: xfile.path,
     );
-    final piece = edl.pieces.firstWhere((p) => p.id == pieceId);
-    piece.elements[elementIndex].photoPaths.add(storedPath);
+    final capturedAt = DateTime.now().toUtc();
+    try {
+      await PhotoWatermark.stampInPlace(
+        File(storedPath),
+        at: capturedAt,
+        label: '${piece.nom} · ${element.nom}',
+      );
+    } catch (_) {
+      // En cas d'échec de l'incrustation, on garde la photo brute plutôt que
+      // de bloquer l'utilisateur ; la date+heure reste enregistrée dans le
+      // modèle via photoCapturedAt.
+    }
+    element.photoPaths.add(storedPath);
+    element.photoCapturedAt.add(capturedAt.toIso8601String());
     await service.save(edl);
   }
 }
@@ -403,6 +504,144 @@ class _ElementCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WallPhotosStrip extends StatelessWidget {
+  final List<WallPhoto> photos;
+  final ValueChanged<WallPhoto> onDelete;
+  const _WallPhotosStrip({required this.photos, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.architecture_outlined,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Photos des murs (depuis le plan) · ${photos.length}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: photos.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (ctx, i) => _WallPhotoThumb(
+                photo: photos[i],
+                onDelete: () => onDelete(photos[i]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WallPhotoThumb extends StatelessWidget {
+  final WallPhoto photo;
+  final VoidCallback onDelete;
+  const _WallPhotoThumb({required this.photo, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 96,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => WallPhotoFullscreenScreen(photo: photo),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Stack(
+                  children: [
+                    Image.file(
+                      File(photo.path),
+                      width: 96,
+                      height: 96,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 96,
+                        height: 96,
+                        color: AppColors.divider,
+                        child: const Icon(Icons.broken_image,
+                            color: AppColors.textSecondary),
+                      ),
+                    ),
+                    Positioned(
+                      left: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          photo.label,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: InkWell(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child:
+                    const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
             ),
           ),
         ],

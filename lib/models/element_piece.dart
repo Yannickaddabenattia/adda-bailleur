@@ -11,19 +11,27 @@ class ElementPiece {
   String description;
   List<String> photoPaths;
 
+  /// ISO8601 UTC, parallèle à [photoPaths] (même index = même photo). Vide ou
+  /// chaîne vide pour les photos prises avant l'introduction de l'horodatage
+  /// (legacy). À garder synchronisé avec [photoPaths] : ajouter / retirer en
+  /// même temps.
+  List<String> photoCapturedAt;
+
   ElementPiece({
     required this.id,
     required this.nom,
     required this.etat,
     required this.description,
     required this.photoPaths,
-  });
+    List<String>? photoCapturedAt,
+  }) : photoCapturedAt = _alignMeta(photoPaths, photoCapturedAt);
 
   factory ElementPiece.create({
     required String nom,
     EtatElement etat = EtatElement.bon,
     String description = '',
     List<String> photoPaths = const [],
+    List<String> photoCapturedAt = const [],
   }) {
     return ElementPiece(
       id: const Uuid().v4(),
@@ -31,6 +39,7 @@ class ElementPiece {
       etat: etat,
       description: description.trim(),
       photoPaths: List<String>.from(photoPaths),
+      photoCapturedAt: List<String>.from(photoCapturedAt),
     );
   }
 
@@ -42,7 +51,18 @@ class ElementPiece {
       etat.name,
       description.trim(),
       photoPaths.join(','),
+      photoCapturedAt.join(','),
     ].join('::');
+  }
+
+  static List<String> _alignMeta(List<String> paths, List<String>? meta) {
+    final out = List<String>.from(meta ?? const <String>[]);
+    if (out.length < paths.length) {
+      out.addAll(List.filled(paths.length - out.length, ''));
+    } else if (out.length > paths.length) {
+      out.removeRange(paths.length, out.length);
+    }
+    return out;
   }
 }
 
@@ -62,13 +82,15 @@ class ElementPieceAdapter extends TypeAdapter<ElementPiece> {
       etat: EtatElement.fromString(fields[2] as String),
       description: fields[3] as String,
       photoPaths: (fields[4] as List).cast<String>(),
+      photoCapturedAt:
+          (fields[5] as List?)?.cast<String>() ?? const <String>[],
     );
   }
 
   @override
   void write(BinaryWriter writer, ElementPiece obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -78,6 +100,8 @@ class ElementPieceAdapter extends TypeAdapter<ElementPiece> {
       ..writeByte(3)
       ..write(obj.description)
       ..writeByte(4)
-      ..write(obj.photoPaths);
+      ..write(obj.photoPaths)
+      ..writeByte(5)
+      ..write(obj.photoCapturedAt);
   }
 }

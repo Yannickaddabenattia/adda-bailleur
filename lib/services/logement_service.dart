@@ -31,4 +31,12 @@ class LogementService extends ChangeNotifier {
   }
 
   int get count => LocalDatabase.logementsBox.length;
+
+  String bailNumberFor(String logementId) {
+    final byCreation = LocalDatabase.logementsBox.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final i = byCreation.indexWhere((l) => l.id == logementId);
+    if (i < 0) return '----';
+    return (i + 1).toString().padLeft(4, '0');
+  }
 }

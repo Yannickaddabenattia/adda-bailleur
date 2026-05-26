@@ -7,6 +7,7 @@ import '../../models/etat_des_lieux.dart';
 import '../../services/etat_des_lieux_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
+import '../../services/plan_logement_service.dart';
 import '../../widgets/primary_button.dart';
 import 'etat_des_lieux_edit_screen.dart';
 
@@ -46,14 +47,28 @@ class _EtatDesLieuxWizardScreenState extends State<EtatDesLieuxWizardScreen> {
       return;
     }
 
+    final service = context.read<EtatDesLieuxService>();
+    // Si le logement a au moins un plan avec des pièces nommées, on initialise
+    // l'EDL avec exactement ces pièces, en pré-remplissant chacune avec les
+    // accessoires standards déduits du nom (cuisine → évier, plan de travail…).
+    // Sinon : fallback sur le template générique basé sur le type de logement.
+    final plans = context
+        .read<PlanLogementService>()
+        .all()
+        .where((p) => p.logementId == _logementId)
+        .toList();
+    final pieces = EdlTemplates.fromPlans(plans) ??
+        EdlTemplates.defaultFor(logement.type);
+
     final edl = EtatDesLieux.create(
       type: _type,
       logementId: _logementId!,
       locataireId: _locataireId!,
       date: _date,
-      pieces: EdlTemplates.defaultFor(logement.type),
+      pieces: pieces,
+      bailleurAdresse: service.lastBailleurAdresse(),
     );
-    await context.read<EtatDesLieuxService>().save(edl);
+    await service.save(edl);
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

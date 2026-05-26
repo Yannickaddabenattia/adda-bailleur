@@ -9,6 +9,10 @@ import 'package:provider/provider.dart';
 import '../../core/backup/backup_codec.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/received_bundle.dart';
+import '../../services/etat_des_lieux_service.dart';
+import '../../services/locataire_service.dart';
+import '../../services/logement_service.dart';
+import '../../services/quittance_service.dart';
 import '../../services/tenant_share_service.dart';
 import '../../widgets/primary_button.dart';
 import 'received_bundle_detail_screen.dart';
@@ -39,9 +43,14 @@ class _ReceivedBundleListScreenState extends State<ReceivedBundleListScreen> {
 
     setState(() => _busy = true);
     try {
-      final bundle = await context
-          .read<TenantShareService>()
-          .saveReceivedShare(bytes: bytes, code: code);
+      final bundle = await context.read<TenantShareService>().saveReceivedShare(
+            bytes: bytes,
+            code: code,
+            logementService: context.read<LogementService>(),
+            locataireService: context.read<LocataireService>(),
+            etatDesLieuxService: context.read<EtatDesLieuxService>(),
+            quittanceService: context.read<QuittanceService>(),
+          );
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(

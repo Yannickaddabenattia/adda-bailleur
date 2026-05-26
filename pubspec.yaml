@@ -1,5 +1,5 @@
 name: adda_location
-description: "Adda Location - Gestion locale de locations immobilières."
+description: "ADDA Bailleur - Gestion locale de locations immobilières."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -31,6 +31,7 @@ dependencies:
   # États des lieux / photos / signatures
   signature: ^5.5.0
   image_picker: ^1.1.2
+  image: ^4.5.4
 
   # PDF (quittances, états des lieux)
   pdf: ^3.11.1
@@ -40,6 +41,23 @@ dependencies:
   # Sauvegarde chiffrée (export/import)
   pointycastle: ^3.9.1
   file_picker: ^8.1.7
+  file_selector: ^1.0.3
+  archive: ^4.0.2
+
+  # QR code (preuve d'accord locataire par mailto:)
+  qr_flutter: ^4.1.0
+
+  # Graphiques (tableau de bord financier)
+  fl_chart: ^0.69.0
+
+  # Ouverture du client mail (mailto:)
+  url_launcher: ^6.3.1
+
+  # Ajout d'événements au calendrier natif iOS / Android / macOS
+  add_2_calendar: ^3.0.1
+
+  # Export comptabilité CSV
+  csv: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -54,6 +72,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/
 
 flutter_launcher_icons:
   android: true

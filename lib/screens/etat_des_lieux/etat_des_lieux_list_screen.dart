@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/hover_card.dart';
 import '../../models/etat_des_lieux.dart';
 import '../../services/etat_des_lieux_service.dart';
 import '../../services/locataire_service.dart';
@@ -52,20 +53,16 @@ class _EdlCard extends StatelessWidget {
     final logement = context.watch<LogementService>().byId(edl.logementId);
     final locataire = context.watch<LocataireService>().byId(edl.locataireId);
 
-    return InkWell(
+    return HoverCard(
+      accent: AppColors.primary,
       borderRadius: BorderRadius.circular(16),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => EtatDesLieuxDetailScreen(edlId: edl.id),
         ),
       ),
-      child: Container(
+      child: Padding(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
-        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
