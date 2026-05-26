@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 
 import '../core/storage/local_database.dart';
 import '../models/contrat_bail.dart';
-import '../models/diagnostic.dart';
 
 /// Catégorie d'un rappel pour permettre un filtrage / un libellé adapté.
 enum RappelKind {

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/contrat_bail.dart';
-import '../../models/locataire.dart';
 import '../../models/logement.dart';
 import '../../services/contrat_bail_service.dart';
 import '../../services/locataire_service.dart';

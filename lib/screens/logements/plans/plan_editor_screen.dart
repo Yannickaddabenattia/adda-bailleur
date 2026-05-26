@@ -75,9 +75,6 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
   final GlobalKey<_DrawerViewState> _drawerKey =
       GlobalKey<_DrawerViewState>();
 
-  /// Échelle approximative pour calculer les m² (canvas = 12 m × 12 m).
-  static const double _scaleMeters = 12.0;
-
   bool get _shouldForceLandscape =>
       !widget.readOnly &&
       defaultTargetPlatform == TargetPlatform.android;
@@ -503,21 +500,6 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
       if (r.id == id) return r;
     }
     return null;
-  }
-
-  double _roomAreaM2(RoomShape r) {
-    if (r.isPolygon && r.vertices != null) {
-      final v = r.vertices!;
-      double a = 0;
-      final n = v.length ~/ 2;
-      for (var i = 0; i < n; i++) {
-        final j = (i + 1) % n;
-        a += v[i * 2] * v[j * 2 + 1];
-        a -= v[j * 2] * v[i * 2 + 1];
-      }
-      return (a / 2).abs() * _scaleMeters * _scaleMeters;
-    }
-    return r.width * r.height * _scaleMeters * _scaleMeters;
   }
 
   Future<void> _openWallFromSidebar(
@@ -3339,8 +3321,7 @@ class _DrawerViewState extends State<_DrawerView> {
     widget.onSelect(null);
   }
 
-  /// Échelle réelle du canvas (12 m × 12 m). Doit rester en cohérence avec
-  /// `_PlanEditorScreenState._scaleMeters`.
+  /// Échelle réelle du canvas (12 m × 12 m).
   static const double _wallScaleMeters = 12.0;
 
   /// Distance (en proportion du canevas) en deçà de laquelle un mur
@@ -3844,7 +3825,6 @@ class _DrawerViewState extends State<_DrawerView> {
   bool get canZoomInExt => _zoom < _zoomMax;
   bool get canZoomOutExt => _zoom > _zoomMin;
   static List<Color> get paletteColors => _colors;
-  static List<String> get standardRoomTypes => _palette;
 
   /// Bascule la pièce sélectionnée entre rectangle et polygone (forme libre).
   void _toggleShapeMode() {

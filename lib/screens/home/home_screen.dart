@@ -12,11 +12,15 @@ import '../../services/depense_service.dart';
 import '../../services/etat_des_lieux_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
+import '../../services/contrat_bail_service.dart';
+import '../../services/diagnostic_service.dart';
 import '../../services/quittance_service.dart';
 import '../../services/user_service.dart';
 import '../../services/compta_export_service.dart';
 import '../../services/rappel_service.dart';
 import '../backup/backup_screen.dart';
+import '../contrats/mes_contrats_screen.dart';
+import '../diagnostics/mes_diagnostics_screen.dart';
 import '../documents/documents_screen.dart';
 import '../etat_des_lieux/etat_des_lieux_list_screen.dart';
 import '../finance/finance_dashboard_screen.dart';
@@ -40,6 +44,7 @@ class HomeScreen extends StatelessWidget {
     final locataires = context.watch<LocataireService>().all;
     final quittances = context.watch<QuittanceService>().all;
     final edls = context.watch<EtatDesLieuxService>().all;
+    final contrats = context.watch<ContratBailService>().all;
     final depenses = context.watch<DepenseService>().all;
     final credits = context.watch<CreditService>().all;
 
@@ -214,6 +219,21 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    _SectionItem(
+                      icon: Icons.description_outlined,
+                      iconColor: const Color(0xFF0EA5E9),
+                      iconBg: const Color(0xFF0EA5E9).withValues(alpha: 0.10),
+                      title: 'Contrats de bail',
+                      subtitle: contrats.isEmpty
+                          ? 'Aucun bail · conforme loi ALUR'
+                          : '${contrats.length} bail${contrats.length > 1 ? 's' : ''} · conformes loi ALUR',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const MesContratsScreen(),
+                        ),
+                      ),
+                    ),
+                    _DiagnosticsSectionItem(),
                     _RappelsSectionItem(),
                   ],
                 ),
@@ -828,6 +848,32 @@ class _StatusPill extends StatelessWidget {
           color: color,
           fontSize: 11,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagnosticsSectionItem extends StatelessWidget {
+  const _DiagnosticsSectionItem();
+
+  @override
+  Widget build(BuildContext context) {
+    final diagnostics = context.watch<DiagnosticService>().all;
+    final expires = diagnostics.where((d) => d.estExpire).length;
+    return _SectionItem(
+      icon: Icons.fact_check_outlined,
+      iconColor: expires > 0 ? AppColors.error : AppColors.success,
+      iconBg: (expires > 0 ? AppColors.error : AppColors.success)
+          .withValues(alpha: 0.10),
+      title: 'Diagnostics',
+      subtitle: diagnostics.isEmpty
+          ? 'DPE, ERP, plomb, gaz, électrique…'
+          : '${diagnostics.length} diagnostic${diagnostics.length > 1 ? "s" : ""}'
+              '${expires > 0 ? " · $expires à renouveler" : " · tous à jour"}',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const MesDiagnosticsScreen(),
         ),
       ),
     );
