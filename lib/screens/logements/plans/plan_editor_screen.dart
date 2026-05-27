@@ -440,6 +440,16 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     if (state == null) return;
                     state.startFreeDraw();
                   },
+                  onStartCalibrate: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.startCalibration();
+                  },
+                  onClearCalibrate: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.clearCalibration();
+                  },
                   onPickColor: (idx) =>
                       _drawerKey.currentState?.setRoomColorIndex(idx),
                   onRename: () => _drawerKey.currentState?.renameSelected(),
@@ -900,6 +910,8 @@ class _PlanSidebar extends StatelessWidget {
   final String? etatId;
   final ValueChanged<String> onAddRoom;
   final VoidCallback onAddFormeLibre;
+  final VoidCallback onStartCalibrate;
+  final VoidCallback onClearCalibrate;
   final ValueChanged<int> onPickColor;
   final VoidCallback onRename;
   final VoidCallback onDelete;
@@ -912,6 +924,8 @@ class _PlanSidebar extends StatelessWidget {
     required this.isTerrain,
     required this.onAddRoom,
     required this.onAddFormeLibre,
+    required this.onStartCalibrate,
+    required this.onClearCalibrate,
     required this.onPickColor,
     required this.onRename,
     required this.onDelete,
@@ -967,6 +981,14 @@ class _PlanSidebar extends StatelessWidget {
             ),
             const SizedBox(height: 22),
           ],
+          const _SectionHeader('Échelle du plan'),
+          const SizedBox(height: 10),
+          _ScaleCard(
+            plan: plan,
+            onCalibrate: onStartCalibrate,
+            onClear: onClearCalibrate,
+          ),
+          const SizedBox(height: 22),
           const _SectionHeader('Pièce sélectionnée'),
           const SizedBox(height: 10),
           if (selected == null)
@@ -978,8 +1000,8 @@ class _PlanSidebar extends StatelessWidget {
               onDelete: onDelete,
               onRotate: onRotate,
               onPickColor: onPickColor,
-              areaM2: _roomAreaForLabel(selected!),
-              perimM: _perimeterForLabel(selected!),
+              areaM2: _roomAreaForLabel(selected!, plan),
+              perimM: _perimeterForLabel(selected!, plan),
             ),
           const SizedBox(height: 22),
           const _SectionHeader('Photos par mur'),
@@ -1005,7 +1027,17 @@ class _PlanSidebar extends StatelessWidget {
     );
   }
 
-  static double _roomAreaForLabel(RoomShape r) {
+  /// Échelle utilisée par défaut quand le plan n'est pas calibré (canvas
+  /// virtuel de 12 m × 12 m). Sera remplacée par la valeur réelle dès que
+  /// l'utilisateur a calibré son plan.
+  static const double _defaultMetersPerUnit = 12.0;
+
+  static double _metersPerUnit(PlanLogement plan) =>
+      plan.scaleMetersPerUnit ?? _defaultMetersPerUnit;
+
+  static double _roomAreaForLabel(RoomShape r, PlanLogement plan) {
+    final m = _metersPerUnit(plan);
+    final m2 = m * m;
     if (r.isPolygon && r.vertices != null) {
       final v = r.vertices!;
       double a = 0;
@@ -1015,12 +1047,13 @@ class _PlanSidebar extends StatelessWidget {
         a += v[i * 2] * v[j * 2 + 1];
         a -= v[j * 2] * v[i * 2 + 1];
       }
-      return (a / 2).abs() * 144.0;
+      return (a / 2).abs() * m2;
     }
-    return r.width * r.height * 144.0;
+    return r.width * r.height * m2;
   }
 
-  static double _perimeterForLabel(RoomShape r) {
+  static double _perimeterForLabel(RoomShape r, PlanLogement plan) {
+    final m = _metersPerUnit(plan);
     if (r.isPolygon && r.vertices != null) {
       final v = r.vertices!;
       double p = 0;
@@ -1031,9 +1064,9 @@ class _PlanSidebar extends StatelessWidget {
         final dy = v[j * 2 + 1] - v[i * 2 + 1];
         p += math.sqrt(dx * dx + dy * dy);
       }
-      return p * 12.0;
+      return p * m;
     }
-    return (r.width + r.height) * 2.0 * 12.0;
+    return (r.width + r.height) * 2.0 * m;
   }
 }
 
@@ -1754,6 +1787,12 @@ class _DrawerViewState extends State<_DrawerView> {
   /// pour le magnétisme. Plus petit que la fermeture pour éviter la confusion.
   static const double _freeDrawSnapRadius = 0.02;
 
+  /// Mode « Calibrer l'échelle » : 1ᵉʳ tap pose le sommet de départ, 2ᵉ tap
+  /// pose l'arrivée puis un dialog demande la distance réelle en mètres.
+  bool _calibrateMode = false;
+  Offset? _calibratePoint1;
+  Offset? _calibratePoint2;
+
   /// En mode prise de photos depuis l'EDL (readOnly + allowWallPhotoCapture),
   /// pièce verrouillée par appui long. Tant qu'une pièce est verrouillée,
   /// seuls ses badges de murs restent visibles et capturables — afin que
@@ -1947,6 +1986,17 @@ class _DrawerViewState extends State<_DrawerView> {
                                   ),
                                 ),
                               ),
+                            if (_calibrateMode)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _CalibratePreviewPainter(
+                                      p1: _calibratePoint1,
+                                      p2: _calibratePoint2,
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -1968,6 +2018,16 @@ class _DrawerViewState extends State<_DrawerView> {
                     onFinish: _freeDrawPoints.length >= 3
                         ? _finalizeFreeDraw
                         : null,
+                  ),
+                ),
+              if (_calibrateMode)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: _CalibrateBanner(
+                    point1Placed: _calibratePoint1 != null,
+                    onCancel: cancelCalibration,
                   ),
                 ),
               if (_zoom > 1.0)
@@ -3382,6 +3442,10 @@ class _DrawerViewState extends State<_DrawerView> {
       _handleFreeDrawTap(pos, canvas);
       return;
     }
+    if (_calibrateMode) {
+      _handleCalibrateTap(pos, canvas);
+      return;
+    }
     // Tap sur le canvas vide : déselectionne.
     widget.onSelect(null);
   }
@@ -3649,6 +3713,169 @@ class _DrawerViewState extends State<_DrawerView> {
     widget.onChanged();
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  //   Mode « Calibrer l'échelle » (deux clics + saisie de la distance réelle)
+  // ───────────────────────────────────────────────────────────────────────
+
+  /// Entre dans le mode calibration. L'utilisateur clique 2 points sur le
+  /// plan puis tape la distance réelle entre ces deux points.
+  void startCalibration() {
+    if (widget.readOnly) return;
+    setState(() {
+      _calibrateMode = true;
+      _calibratePoint1 = null;
+      _calibratePoint2 = null;
+      _freeDrawMode = false;
+      _freeDrawPoints.clear();
+      _annotateMode = false;
+      widget.onSelect(null);
+    });
+  }
+
+  void cancelCalibration() {
+    setState(() {
+      _calibrateMode = false;
+      _calibratePoint1 = null;
+      _calibratePoint2 = null;
+    });
+  }
+
+  /// Supprime l'échelle calibrée du plan (retour à un plan non métré).
+  Future<void> clearCalibration() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la calibration ?'),
+        content: const Text(
+          'Le plan ne sera plus à l\'échelle. Les cotes en mètres et les '
+          'surfaces calculées ne seront plus affichées.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => widget.plan.scaleMetersPerUnit = null);
+    widget.onChanged();
+  }
+
+  void _handleCalibrateTap(Offset pos, Size canvas) {
+    final norm = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
+    // Snap aux sommets/murs existants pour pointer précisément.
+    final snapped = _snapToExistingGeometry(norm);
+    if (_calibratePoint1 == null) {
+      setState(() => _calibratePoint1 = snapped);
+    } else {
+      setState(() => _calibratePoint2 = snapped);
+      _askCalibrationDistance();
+    }
+  }
+
+  Future<void> _askCalibrationDistance() async {
+    final p1 = _calibratePoint1!;
+    final p2 = _calibratePoint2!;
+    final unitsDist = (p2 - p1).distance;
+    if (unitsDist < 1e-4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Les 2 points sont trop proches.')),
+      );
+      setState(() {
+        _calibratePoint1 = null;
+        _calibratePoint2 = null;
+      });
+      return;
+    }
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Distance réelle ?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Saisis la distance réelle entre les 2 points cliqués (en mètres). '
+              'Le plan entier sera mis à l\'échelle.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Distance (m)',
+                hintText: 'ex. 5,20',
+                suffixText: 'm',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('Calibrer'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) {
+      setState(() {
+        _calibrateMode = false;
+        _calibratePoint1 = null;
+        _calibratePoint2 = null;
+      });
+      return;
+    }
+    final parsed = double.tryParse(result.trim().replaceAll(',', '.'));
+    if (parsed == null || parsed <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Distance invalide.')),
+      );
+      setState(() {
+        _calibratePoint1 = null;
+        _calibratePoint2 = null;
+      });
+      return;
+    }
+    final scale = parsed / unitsDist;
+    setState(() {
+      widget.plan.scaleMetersPerUnit = scale;
+      _calibrateMode = false;
+      _calibratePoint1 = null;
+      _calibratePoint2 = null;
+    });
+    widget.onChanged();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Échelle calibrée : ${parsed.toStringAsFixed(2)} m sur ${(unitsDist * 100).toStringAsFixed(1)} % du plan.'),
+        ),
+      );
+    }
+  }
+
   /// Échelle réelle du canvas (12 m × 12 m).
   static const double _wallScaleMeters = 12.0;
 
@@ -3662,7 +3889,9 @@ class _DrawerViewState extends State<_DrawerView> {
     final isHorizontalWall =
         side == _WallSide.top || side == _WallSide.bottom;
     final currentRatio = isHorizontalWall ? r.width : r.height;
-    final currentMeters = currentRatio * _wallScaleMeters;
+    final metersPerUnit =
+        widget.plan.scaleMetersPerUnit ?? _wallScaleMeters;
+    final currentMeters = currentRatio * metersPerUnit;
     final controller = TextEditingController(
       text: currentMeters.toStringAsFixed(2).replaceAll('.', ','),
     );
@@ -3750,9 +3979,9 @@ class _DrawerViewState extends State<_DrawerView> {
                       setLocal(() => errorText = 'Valeur invalide');
                       return;
                     }
-                    if (v > _wallScaleMeters) {
+                    if (v > metersPerUnit) {
                       setLocal(() => errorText =
-                          'Maximum ${_wallScaleMeters.toStringAsFixed(0)} m');
+                          'Maximum ${metersPerUnit.toStringAsFixed(0)} m');
                       return;
                     }
                     Navigator.of(ctx)
@@ -3773,7 +4002,7 @@ class _DrawerViewState extends State<_DrawerView> {
     setState(() {
       if (result.lengthMeters != null) {
         final newRatio =
-            (result.lengthMeters! / _wallScaleMeters).clamp(0.001, 1.0);
+            (result.lengthMeters! / metersPerUnit).clamp(0.001, 1.0);
         if (r.isPolygon) {
           // Pour un polygone, on redimensionne sa bounding-box autour de
           // l'extrémité opposée du mur tapé, en préservant les proportions
@@ -5440,4 +5669,193 @@ class _BannerIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Carte « Échelle du plan » de la sidebar. Affiche l'état de calibration
+/// (non calibré / calibré avec valeur) et propose les actions Calibrer /
+/// Recalibrer / Supprimer.
+class _ScaleCard extends StatelessWidget {
+  final PlanLogement plan;
+  final VoidCallback onCalibrate;
+  final VoidCallback onClear;
+
+  const _ScaleCard({
+    required this.plan,
+    required this.onCalibrate,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final calibrated = plan.isCalibrated;
+    final scale = plan.scaleMetersPerUnit;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: calibrated
+            ? const Color(0xFFECFDF5)
+            : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: calibrated
+              ? const Color(0xFF10B981).withValues(alpha: 0.35)
+              : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                calibrated ? Icons.straighten : Icons.straighten_outlined,
+                size: 18,
+                color: calibrated
+                    ? const Color(0xFF059669)
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  calibrated
+                      ? 'Plan calibré'
+                      : 'Plan non calibré',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: calibrated
+                        ? const Color(0xFF065F46)
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            calibrated
+                ? '1 unité = ${scale!.toStringAsFixed(2)} m · les cotes et surfaces s\'affichent en mètres.'
+                : 'Clique « Calibrer » puis trace une distance connue (ex. la longueur d\'un mur) pour obtenir les cotes en mètres et la surface auto.',
+            style: const TextStyle(fontSize: 12, height: 1.3),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onCalibrate,
+                  icon: const Icon(Icons.straighten, size: 16),
+                  label: Text(calibrated ? 'Recalibrer' : 'Calibrer'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    foregroundColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              if (calibrated) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.delete_outline),
+                  color: AppColors.error,
+                  tooltip: 'Supprimer la calibration',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bannière de contrôle affichée pendant le mode calibration.
+class _CalibrateBanner extends StatelessWidget {
+  final bool point1Placed;
+  final VoidCallback onCancel;
+
+  const _CalibrateBanner({
+    required this.point1Placed,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xFF065F46),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.straighten, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                point1Placed
+                    ? 'Clique le 2ᵉ point pour fermer la distance à calibrer.'
+                    : 'Clique le 1ᵉʳ point d\'une distance connue (ex. extrémité d\'un mur).',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Annuler'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Painter affichant les 2 points de calibration et la ligne entre eux.
+class _CalibratePreviewPainter extends CustomPainter {
+  final Offset? p1;
+  final Offset? p2;
+
+  _CalibratePreviewPainter({required this.p1, required this.p2});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (p1 == null) return;
+    Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+
+    final dotFill = Paint()..color = Colors.white;
+    final dotBorder = Paint()
+      ..color = const Color(0xFF059669)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+    final linePaint = Paint()
+      ..color = const Color(0xFF059669)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    final a = toPx(p1!);
+    canvas.drawCircle(a, 7, dotFill);
+    canvas.drawCircle(a, 7, dotBorder);
+
+    if (p2 != null) {
+      final b = toPx(p2!);
+      canvas.drawLine(a, b, linePaint);
+      canvas.drawCircle(b, 7, dotFill);
+      canvas.drawCircle(b, 7, dotBorder);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CalibratePreviewPainter old) =>
+      old.p1 != p1 || old.p2 != p2;
 }

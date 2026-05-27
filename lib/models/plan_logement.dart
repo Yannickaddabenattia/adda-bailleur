@@ -401,6 +401,11 @@ class PlanLogement {
   final DateTime createdAt;
   DateTime updatedAt;
 
+  /// Échelle réelle du plan : combien de mètres représente une unité du
+  /// repère normalisé (canvas = 1.0 × 1.0). `null` = plan non calibré
+  /// (aucune cote affichée). Calibré via l'outil « Calibrer l'échelle ».
+  double? scaleMetersPerUnit;
+
   PlanLogement({
     required this.id,
     required this.logementId,
@@ -413,6 +418,7 @@ class PlanLogement {
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
+    this.scaleMetersPerUnit,
   });
 
   factory PlanLogement.create({
@@ -443,6 +449,12 @@ class PlanLogement {
 
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
   bool get hasDrawing => rooms.isNotEmpty;
+  bool get isCalibrated => scaleMetersPerUnit != null && scaleMetersPerUnit! > 0;
+
+  /// Convertit une distance en unités normalisées (0..1) en mètres si le
+  /// plan est calibré, sinon retourne null.
+  double? unitsToMeters(double units) =>
+      isCalibrated ? units * scaleMetersPerUnit! : null;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -456,6 +468,7 @@ class PlanLogement {
         'sortOrder': sortOrder,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'updatedAt': updatedAt.toUtc().toIso8601String(),
+        'scaleMetersPerUnit': scaleMetersPerUnit,
       };
 
   factory PlanLogement.fromMap(Map<String, dynamic> m) => PlanLogement(
@@ -476,6 +489,7 @@ class PlanLogement {
         sortOrder: (m['sortOrder'] as num).toInt(),
         createdAt: DateTime.parse(m['createdAt'] as String),
         updatedAt: DateTime.parse(m['updatedAt'] as String),
+        scaleMetersPerUnit: (m['scaleMetersPerUnit'] as num?)?.toDouble(),
       );
 }
 
@@ -572,13 +586,15 @@ class PlanLogementAdapter extends TypeAdapter<PlanLogement> {
       wallPhotos: f.containsKey(10)
           ? (f[10] as List).cast<WallPhoto>()
           : <WallPhoto>[],
+      scaleMetersPerUnit: (f[11] as num?)?.toDouble(),
     );
   }
 
   @override
   void write(BinaryWriter writer, PlanLogement obj) {
+    final hasScale = obj.scaleMetersPerUnit != null;
     writer
-      ..writeByte(11)
+      ..writeByte(hasScale ? 12 : 11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -601,6 +617,11 @@ class PlanLogementAdapter extends TypeAdapter<PlanLogement> {
       ..write(obj.annotations)
       ..writeByte(10)
       ..write(obj.wallPhotos);
+    if (hasScale) {
+      writer
+        ..writeByte(11)
+        ..write(obj.scaleMetersPerUnit);
+    }
   }
 }
 

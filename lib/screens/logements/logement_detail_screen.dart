@@ -1694,8 +1694,10 @@ class _PlanThumbnail extends StatelessWidget {
                     color: const Color(0xFFD7F1E2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: CustomPaint(
-                    painter: _MiniPlanPainter(),
+                  child: SizedBox.expand(
+                    child: CustomPaint(
+                      painter: _MiniPlanPainter(plan: plan),
+                    ),
                   ),
                 ),
               ),
@@ -1754,14 +1756,109 @@ class _PlanThumbnail extends StatelessWidget {
   }
 }
 
+/// Rendu miniature d'un plan dans la card de la section « Plans & surfaces ».
+/// Affiche les pièces effectivement dessinées (rectangles ou polygones) avec
+/// leur couleur, ajustées et centrées dans la zone disponible. Si le plan est
+/// vide ou n'est qu'une image importée, retombe sur un pictogramme stylisé.
 class _MiniPlanPainter extends CustomPainter {
+  final PlanLogement plan;
+
+  _MiniPlanPainter({required this.plan});
+
+  /// Palette des couleurs de pièce — doit rester en cohérence avec
+  /// `_DrawerViewState._colors` de l'éditeur de plans.
+  static const List<Color> _roomColors = [
+    Color(0xFFBFDBFE),
+    Color(0xFFFECACA),
+    Color(0xFFFEF3C7),
+    Color(0xFFD9F99D),
+    Color(0xFFC7D2FE),
+    Color(0xFFFBCFE8),
+    Color(0xFFA7F3D0),
+    Color(0xFFE2E8F0),
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
+    final rooms = plan.rooms;
+    if (rooms.isEmpty) {
+      _paintPlaceholder(canvas, size);
+      return;
+    }
+
+    // Bbox de toutes les pièces (coords normalisées 0..1).
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = -double.infinity, maxY = -double.infinity;
+    for (final r in rooms) {
+      final corners = _corners(r);
+      for (final c in corners) {
+        if (c.dx < minX) minX = c.dx;
+        if (c.dy < minY) minY = c.dy;
+        if (c.dx > maxX) maxX = c.dx;
+        if (c.dy > maxY) maxY = c.dy;
+      }
+    }
+    final bbW = (maxX - minX).clamp(0.001, 1.0);
+    final bbH = (maxY - minY).clamp(0.001, 1.0);
+
+    // Ajuste l'échelle pour rentrer dans la zone avec un peu de padding,
+    // centré et en conservant le ratio.
+    const padding = 6.0;
+    final availW = size.width - padding * 2;
+    final availH = size.height - padding * 2;
+    final scale = math.min(availW / bbW, availH / bbH);
+    final renderW = bbW * scale;
+    final renderH = bbH * scale;
+    final offsetX = (size.width - renderW) / 2;
+    final offsetY = (size.height - renderH) / 2;
+
+    Offset toPx(double nx, double ny) => Offset(
+          offsetX + (nx - minX) * scale,
+          offsetY + (ny - minY) * scale,
+        );
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFF334155).withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    for (final r in rooms) {
+      final fillPaint = Paint()
+        ..color = _roomColors[r.colorIndex % _roomColors.length]
+            .withValues(alpha: 0.92)
+        ..style = PaintingStyle.fill;
+
+      if (r.isPolygon && r.vertices != null) {
+        final v = r.vertices!;
+        final path = Path();
+        for (var i = 0; i < v.length; i += 2) {
+          final p = toPx(v[i], v[i + 1]);
+          if (i == 0) {
+            path.moveTo(p.dx, p.dy);
+          } else {
+            path.lineTo(p.dx, p.dy);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, fillPaint);
+        canvas.drawPath(path, borderPaint);
+      } else {
+        final tl = toPx(r.x, r.y);
+        final br = toPx(r.x + r.width, r.y + r.height);
+        final rect = Rect.fromPoints(tl, br);
+        canvas.drawRect(rect, fillPaint);
+        canvas.drawRect(rect, borderPaint);
+      }
+    }
+  }
+
+  /// Pictogramme de secours quand le plan n'a aucune pièce dessinée.
+  void _paintPlaceholder(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = const Color(0xFF059669).withValues(alpha: 0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4;
-    final pad = 8.0;
+    const pad = 8.0;
     final w = size.width - pad * 2;
     final h = size.height - pad * 2;
     final rect = Rect.fromLTWH(pad, pad, w, h);
@@ -1776,10 +1873,37 @@ class _MiniPlanPainter extends CustomPainter {
       Offset(pad + w * 0.55, pad + h * 0.55),
       paint,
     );
+    if (plan.hasImage) {
+      final iconPaint = Paint()
+        ..color = const Color(0xFF059669).withValues(alpha: 0.6)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        Offset(size.width / 2, size.height / 2 + 4),
+        4,
+        iconPaint,
+      );
+    }
+  }
+
+  List<Offset> _corners(RoomShape r) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      return [
+        for (var i = 0; i < v.length; i += 2) Offset(v[i], v[i + 1]),
+      ];
+    }
+    return [
+      Offset(r.x, r.y),
+      Offset(r.x + r.width, r.y),
+      Offset(r.x + r.width, r.y + r.height),
+      Offset(r.x, r.y + r.height),
+    ];
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _MiniPlanPainter old) =>
+      !identical(old.plan, plan) ||
+      old.plan.rooms.length != plan.rooms.length;
 }
 
 class _AddPlanCard extends StatelessWidget {
