@@ -1889,6 +1889,14 @@ class _DrawerViewState extends State<_DrawerView> {
   /// considéré comme sur un mur libre.
   static const double _wallHitTolerance = 0.015;
 
+  /// `true` quand l'utilisateur est dans un mode de dessin actif (tracer
+  /// une pièce, tracer un mur, calibrer). Les pièces existantes doivent
+  /// ignorer les taps/pans dans ces modes pour ne pas être sélectionnées
+  /// ou bougées par erreur quand on clique près d'elles pour poser un
+  /// sommet ou un point de calibration.
+  bool get _isInDrawingMode =>
+      _freeDrawMode || _calibrateMode || _drawWallMode;
+
   /// En mode prise de photos depuis l'EDL (readOnly + allowWallPhotoCapture),
   /// pièce verrouillée par appui long. Tant qu'une pièce est verrouillée,
   /// seuls ses badges de murs restent visibles et capturables — afin que
@@ -2835,7 +2843,7 @@ class _DrawerViewState extends State<_DrawerView> {
       width: width,
       height: height,
       child: GestureDetector(
-        onTapUp: ro
+        onTapUp: (ro || _isInDrawingMode)
             ? null
             : (d) {
                 if (_annotateMode) {
@@ -2846,10 +2854,10 @@ class _DrawerViewState extends State<_DrawerView> {
               },
         onLongPress: _isWallPhotoMode
             ? () => _toggleCaptureRoom(r.id)
-            : (ro || _annotateMode)
+            : (ro || _annotateMode || _isInDrawingMode)
                 ? null
                 : () => _showRoomContextMenu(r),
-        onPanStart: (ro || _annotateMode)
+        onPanStart: (ro || _annotateMode || _isInDrawingMode)
             ? null
             : (d) {
                 widget.onSelect(r.id);
@@ -2857,10 +2865,10 @@ class _DrawerViewState extends State<_DrawerView> {
                 _dragStart = d.globalPosition;
                 _dragSnapshot = _snap(r);
               },
-        onPanUpdate: (ro || _annotateMode)
+        onPanUpdate: (ro || _annotateMode || _isInDrawingMode)
             ? null
             : (d) => _onPanUpdate(r, d.globalPosition, canvas),
-        onPanEnd: (ro || _annotateMode) ? null : (_) => _onPanEnd(),
+        onPanEnd: (ro || _annotateMode || _isInDrawingMode) ? null : (_) => _onPanEnd(),
         child: Stack(
           clipBehavior: Clip.none,
           fit: StackFit.expand,
@@ -3016,7 +3024,7 @@ class _DrawerViewState extends State<_DrawerView> {
       width: width,
       height: height,
       child: GestureDetector(
-        onTapUp: ro
+        onTapUp: (ro || _isInDrawingMode)
             ? null
             : (d) {
                 if (_annotateMode) {
@@ -3027,10 +3035,10 @@ class _DrawerViewState extends State<_DrawerView> {
               },
         onLongPress: _isWallPhotoMode
             ? () => _toggleCaptureRoom(r.id)
-            : (ro || _annotateMode)
+            : (ro || _annotateMode || _isInDrawingMode)
                 ? null
                 : () => _showRoomContextMenu(r),
-        onPanStart: (ro || _annotateMode)
+        onPanStart: (ro || _annotateMode || _isInDrawingMode)
             ? null
             : (d) {
                 widget.onSelect(r.id);
@@ -3038,10 +3046,10 @@ class _DrawerViewState extends State<_DrawerView> {
                 _dragStart = d.globalPosition;
                 _dragSnapshot = _snap(r);
               },
-        onPanUpdate: (ro || _annotateMode)
+        onPanUpdate: (ro || _annotateMode || _isInDrawingMode)
             ? null
             : (d) => _onPanUpdate(r, d.globalPosition, canvas),
-        onPanEnd: (ro || _annotateMode) ? null : (_) => _onPanEnd(),
+        onPanEnd: (ro || _annotateMode || _isInDrawingMode) ? null : (_) => _onPanEnd(),
         child: Stack(
           clipBehavior: Clip.none,
           fit: StackFit.expand,
@@ -6398,31 +6406,23 @@ class _FreeWallsPainter extends CustomPainter {
       final a = toPx(w.x1, w.y1);
       final b = toPx(w.x2, w.y2);
 
+      // Épaisseur alignée sur celle des murs des pièces (Border 1.5 / 2.5).
       if (isVirtual) {
-        // Mur virtuel : pointillé sans ombre, plus fin et plus clair.
         final paint = Paint()
           ..color = isSelected
               ? const Color(0xFF0EA5E9)
               : const Color(0xFF64748B)
-          ..strokeWidth = isSelected ? 4.5 : 3
-          ..strokeCap = StrokeCap.round
+          ..strokeWidth = isSelected ? 2.5 : 1.5
+          ..strokeCap = StrokeCap.butt
           ..style = PaintingStyle.stroke;
-        _drawDashedSegment(canvas, a, b, paint, dash: 10, gap: 6);
+        _drawDashedSegment(canvas, a, b, paint, dash: 8, gap: 5);
       } else {
-        // Mur réel : trait plein épais avec ombre légère.
-        final shadowPaint = Paint()
-          ..color = Colors.black.withValues(alpha: 0.12)
-          ..strokeWidth = isSelected ? 12 : 9
-          ..strokeCap = StrokeCap.round
-          ..style = PaintingStyle.stroke;
-        canvas.drawLine(a.translate(1, 1), b.translate(1, 1), shadowPaint);
-
         final paint = Paint()
           ..color = isSelected
               ? const Color(0xFF7C3AED)
-              : const Color(0xFF334155)
-          ..strokeWidth = isSelected ? 8 : 6
-          ..strokeCap = StrokeCap.round
+              : Colors.black54
+          ..strokeWidth = isSelected ? 2.5 : 1.5
+          ..strokeCap = StrokeCap.butt
           ..style = PaintingStyle.stroke;
         canvas.drawLine(a, b, paint);
       }
