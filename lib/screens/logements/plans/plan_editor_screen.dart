@@ -57,6 +57,7 @@ class PlanEditorScreen extends StatefulWidget {
 
 class _PlanEditorScreenState extends State<PlanEditorScreen> {
   String? _selectedRoomId;
+  String? _selectedWallId;
   bool _saving = false;
   late String _activePlanId;
 
@@ -382,12 +383,15 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     key: _drawerKey,
                     plan: plan,
                     selectedRoomId: _selectedRoomId,
+                    selectedWallId: _selectedWallId,
                     readOnly: widget.readOnly,
                     allowWallPhotoCapture: widget.allowWallPhotoCapture,
                     etatId: widget.etatId,
                     externalChrome: showExternalSidebar,
                     onSelect: (id) =>
                         setState(() => _selectedRoomId = id),
+                    onSelectWall: (id) =>
+                        setState(() => _selectedWallId = id),
                     onChanged: () => _save(plan),
                   ),
           );
@@ -450,6 +454,22 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     if (state == null) return;
                     state.clearCalibration();
                   },
+                  onStartDrawWall: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.startDrawWall();
+                  },
+                  selectedWall: _findSelectedWall(plan),
+                  onRenameWall: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.renameSelectedWall();
+                  },
+                  onDeleteWall: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.deleteSelectedWall();
+                  },
                   onPickColor: (idx) =>
                       _drawerKey.currentState?.setRoomColorIndex(idx),
                   onRename: () => _drawerKey.currentState?.renameSelected(),
@@ -504,6 +524,15 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
     if (id == null) return null;
     for (final r in plan.rooms) {
       if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  FreeWall? _findSelectedWall(PlanLogement plan) {
+    final id = _selectedWallId;
+    if (id == null) return null;
+    for (final w in plan.freeWalls) {
+      if (w.id == id) return w;
     }
     return null;
   }
@@ -906,12 +935,16 @@ class _NiveauDropdown extends StatelessWidget {
 class _PlanSidebar extends StatelessWidget {
   final PlanLogement plan;
   final RoomShape? selected;
+  final FreeWall? selectedWall;
   final bool isTerrain;
   final String? etatId;
   final ValueChanged<String> onAddRoom;
   final VoidCallback onAddFormeLibre;
   final VoidCallback onStartCalibrate;
   final VoidCallback onClearCalibrate;
+  final VoidCallback onStartDrawWall;
+  final VoidCallback onRenameWall;
+  final VoidCallback onDeleteWall;
   final ValueChanged<int> onPickColor;
   final VoidCallback onRename;
   final VoidCallback onDelete;
@@ -921,11 +954,15 @@ class _PlanSidebar extends StatelessWidget {
   const _PlanSidebar({
     required this.plan,
     required this.selected,
+    required this.selectedWall,
     required this.isTerrain,
     required this.onAddRoom,
     required this.onAddFormeLibre,
     required this.onStartCalibrate,
     required this.onClearCalibrate,
+    required this.onStartDrawWall,
+    required this.onRenameWall,
+    required this.onDeleteWall,
     required this.onPickColor,
     required this.onRename,
     required this.onDelete,
@@ -979,6 +1016,11 @@ class _PlanSidebar extends StatelessWidget {
               label: '✏️ Tracer une pièce',
               onTap: onAddFormeLibre,
             ),
+            const SizedBox(height: 8),
+            _DashedAddButton(
+              label: '🧱 Tracer un mur',
+              onTap: onStartDrawWall,
+            ),
             const SizedBox(height: 22),
           ],
           const _SectionHeader('Échelle du plan'),
@@ -1003,6 +1045,17 @@ class _PlanSidebar extends StatelessWidget {
               areaM2: _roomAreaForLabel(selected!, plan),
               perimM: _perimeterForLabel(selected!, plan),
             ),
+          if (selectedWall != null) ...[
+            const SizedBox(height: 16),
+            const _SectionHeader('Mur sélectionné'),
+            const SizedBox(height: 10),
+            _SelectedWallCard(
+              plan: plan,
+              wall: selectedWall!,
+              onRename: onRenameWall,
+              onDelete: onDeleteWall,
+            ),
+          ],
           const SizedBox(height: 22),
           const _SectionHeader('Photos par mur'),
           const SizedBox(height: 10),
@@ -1730,21 +1783,25 @@ class _ImageView extends StatelessWidget {
 class _DrawerView extends StatefulWidget {
   final PlanLogement plan;
   final String? selectedRoomId;
+  final String? selectedWallId;
   final bool readOnly;
   final bool allowWallPhotoCapture;
   final String? etatId;
   final bool externalChrome;
   final ValueChanged<String?> onSelect;
+  final ValueChanged<String?> onSelectWall;
   final VoidCallback onChanged;
 
   const _DrawerView({
     super.key,
     required this.plan,
     required this.selectedRoomId,
+    required this.selectedWallId,
     required this.readOnly,
     required this.allowWallPhotoCapture,
     required this.etatId,
     required this.onSelect,
+    required this.onSelectWall,
     required this.onChanged,
     this.externalChrome = false,
   });
@@ -1792,6 +1849,21 @@ class _DrawerViewState extends State<_DrawerView> {
   bool _calibrateMode = false;
   Offset? _calibratePoint1;
   Offset? _calibratePoint2;
+
+  /// Mode « Tracer un mur » : tap pose le point A, 2ᵉ tap pose le point B
+  /// et le mur libre est créé instantanément (nommé automatiquement selon
+  /// la pièce la plus proche).
+  bool _drawWallMode = false;
+  Offset? _drawWallPoint1;
+
+  /// Etat du drag en cours sur un mur libre sélectionné.
+  _WallDragMode? _wallDragMode;
+  Offset? _wallDragStart;
+  FreeWall? _wallDragSnapshot;
+
+  /// Distance maximale (en proportion du canvas) pour qu'un tap soit
+  /// considéré comme sur un mur libre.
+  static const double _wallHitTolerance = 0.015;
 
   /// En mode prise de photos depuis l'EDL (readOnly + allowWallPhotoCapture),
   /// pièce verrouillée par appui long. Tant qu'une pièce est verrouillée,
@@ -1973,6 +2045,21 @@ class _DrawerViewState extends State<_DrawerView> {
                             ...annotationOrder.asMap().entries.map(
                                   (e) => _buildPin(e.value, e.key + 1, size),
                                 ),
+                            if (widget.plan.freeWalls.isNotEmpty)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _FreeWallsPainter(
+                                      plan: widget.plan,
+                                      selectedId: widget.selectedWallId,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            // Poignées du mur sélectionné (drag).
+                            if (_selectedWall() != null)
+                              ..._buildSelectedWallHandles(
+                                  _selectedWall()!, size),
                             if (_freeDrawMode)
                               Positioned.fill(
                                 child: IgnorePointer(
@@ -1997,6 +2084,16 @@ class _DrawerViewState extends State<_DrawerView> {
                                   ),
                                 ),
                               ),
+                            if (_drawWallMode && _drawWallPoint1 != null)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _DrawWallPreviewPainter(
+                                      p1: _drawWallPoint1,
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -2004,6 +2101,16 @@ class _DrawerViewState extends State<_DrawerView> {
                   ),
                 ),
               ),
+              if (_drawWallMode)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: _DrawWallBanner(
+                    point1Placed: _drawWallPoint1 != null,
+                    onCancel: cancelDrawWall,
+                  ),
+                ),
               if (_freeDrawMode)
                 Positioned(
                   top: 8,
@@ -3446,8 +3553,331 @@ class _DrawerViewState extends State<_DrawerView> {
       _handleCalibrateTap(pos, canvas);
       return;
     }
-    // Tap sur le canvas vide : déselectionne.
+    if (_drawWallMode) {
+      _handleDrawWallTap(pos, canvas);
+      return;
+    }
+    // Hit-test : tap sur un mur libre = sélectionne ce mur.
+    final norm = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
+    final hit = _wallAt(norm);
+    if (hit != null) {
+      widget.onSelectWall(hit.id);
+      widget.onSelect(null); // priorité au mur sur la pièce
+      return;
+    }
+    // Tap sur le canvas vide : déselectionne tout.
+    widget.onSelectWall(null);
     widget.onSelect(null);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  //   Mode « Tracer un mur » + sélection/drag de murs libres
+  // ───────────────────────────────────────────────────────────────────────
+
+  void startDrawWall() {
+    if (widget.readOnly) return;
+    setState(() {
+      _drawWallMode = true;
+      _drawWallPoint1 = null;
+      _freeDrawMode = false;
+      _freeDrawPoints.clear();
+      _calibrateMode = false;
+      _calibratePoint1 = null;
+      _calibratePoint2 = null;
+      _annotateMode = false;
+    });
+    widget.onSelectWall(null);
+    widget.onSelect(null);
+  }
+
+  void cancelDrawWall() {
+    setState(() {
+      _drawWallMode = false;
+      _drawWallPoint1 = null;
+    });
+  }
+
+  void _handleDrawWallTap(Offset pos, Size canvas) {
+    final norm = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
+    final snapped = _snapToExistingGeometry(norm);
+    if (_drawWallPoint1 == null) {
+      setState(() => _drawWallPoint1 = snapped);
+      return;
+    }
+    // 2ᵉ point : crée le mur si distance > minuscule.
+    final p1 = _drawWallPoint1!;
+    final p2 = snapped;
+    if ((p2 - p1).distance < 0.01) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mur trop court — réessaie.')),
+      );
+      setState(() => _drawWallPoint1 = null);
+      return;
+    }
+    final wall = FreeWall.create(
+      x1: p1.dx,
+      y1: p1.dy,
+      x2: p2.dx,
+      y2: p2.dy,
+    );
+    setState(() {
+      widget.plan.freeWalls.add(wall);
+      _drawWallMode = false;
+      _drawWallPoint1 = null;
+    });
+    widget.onSelectWall(wall.id);
+    widget.onChanged();
+  }
+
+  /// Cherche un mur libre dont la distance perpendiculaire à `p` est ≤ tolérance.
+  /// Retourne le plus proche, ou null.
+  FreeWall? _wallAt(Offset p) {
+    FreeWall? best;
+    double bestDist = _wallHitTolerance;
+    for (final w in widget.plan.freeWalls) {
+      final d = _distPointToSegment(
+        p,
+        Offset(w.x1, w.y1),
+        Offset(w.x2, w.y2),
+      );
+      if (d < bestDist) {
+        bestDist = d;
+        best = w;
+      }
+    }
+    return best;
+  }
+
+  double _distPointToSegment(Offset p, Offset a, Offset b) {
+    final abx = b.dx - a.dx;
+    final aby = b.dy - a.dy;
+    final len2 = abx * abx + aby * aby;
+    if (len2 < 1e-9) return (p - a).distance;
+    var t = ((p.dx - a.dx) * abx + (p.dy - a.dy) * aby) / len2;
+    t = t.clamp(0.0, 1.0);
+    final proj = Offset(a.dx + t * abx, a.dy + t * aby);
+    return (p - proj).distance;
+  }
+
+  FreeWall? _selectedWall() {
+    final id = widget.selectedWallId;
+    if (id == null) return null;
+    for (final w in widget.plan.freeWalls) {
+      if (w.id == id) return w;
+    }
+    return null;
+  }
+
+  /// Renomme un mur libre (custom label). Vide → retour à l'auto-nommage.
+  Future<void> renameSelectedWall() async {
+    final w = _selectedWall();
+    if (w == null) return;
+    final auto = widget.plan.autoLabelForWall(w);
+    final controller = TextEditingController(text: w.customLabel ?? '');
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer le mur'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Nom auto suggéré : $auto',
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nom personnalisé (vide = auto)',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) => Navigator.of(ctx).pop(v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('__cancel__'),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('Valider'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result == '__cancel__') return;
+    final clean = result.trim();
+    setState(() => w.customLabel = clean.isEmpty ? null : clean);
+    widget.onChanged();
+  }
+
+  Future<void> deleteSelectedWall() async {
+    final w = _selectedWall();
+    if (w == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce mur ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      widget.plan.freeWalls.removeWhere((x) => x.id == w.id);
+    });
+    widget.onSelectWall(null);
+    widget.onChanged();
+  }
+
+  /// Démarre un drag sur le mur sélectionné. `mode` indique quelle partie
+  /// du mur on tire (extrémité 1, extrémité 2, ou corps pour translation).
+  void _startWallDrag(_WallDragMode mode, Offset globalPosition) {
+    final w = _selectedWall();
+    if (w == null) return;
+    _wallDragMode = mode;
+    _wallDragStart = globalPosition;
+    _wallDragSnapshot = FreeWall(
+      id: w.id,
+      x1: w.x1,
+      y1: w.y1,
+      x2: w.x2,
+      y2: w.y2,
+      customLabel: w.customLabel,
+    );
+  }
+
+  void _updateWallDrag(Offset globalPosition, Size canvas) {
+    final w = _selectedWall();
+    if (w == null || _wallDragSnapshot == null || _wallDragStart == null) {
+      return;
+    }
+    final dx = (globalPosition.dx - _wallDragStart!.dx) / canvas.width;
+    final dy = (globalPosition.dy - _wallDragStart!.dy) / canvas.height;
+    final s = _wallDragSnapshot!;
+    setState(() {
+      switch (_wallDragMode) {
+        case _WallDragMode.endpoint1:
+          w.x1 = (s.x1 + dx).clamp(0.0, 1.0);
+          w.y1 = (s.y1 + dy).clamp(0.0, 1.0);
+          break;
+        case _WallDragMode.endpoint2:
+          w.x2 = (s.x2 + dx).clamp(0.0, 1.0);
+          w.y2 = (s.y2 + dy).clamp(0.0, 1.0);
+          break;
+        case _WallDragMode.body:
+          // Translation : on déplace les 2 extrémités du même delta, en
+          // bornant pour ne pas sortir du canvas.
+          final maxDxPos = 1.0 - math.max(s.x1, s.x2);
+          final minDxNeg = -math.min(s.x1, s.x2);
+          final maxDyPos = 1.0 - math.max(s.y1, s.y2);
+          final minDyNeg = -math.min(s.y1, s.y2);
+          final adx = dx.clamp(minDxNeg, maxDxPos);
+          final ady = dy.clamp(minDyNeg, maxDyPos);
+          w.x1 = s.x1 + adx;
+          w.y1 = s.y1 + ady;
+          w.x2 = s.x2 + adx;
+          w.y2 = s.y2 + ady;
+          break;
+        case null:
+          break;
+      }
+    });
+  }
+
+  void _endWallDrag() {
+    if (_wallDragMode != null) {
+      widget.onChanged();
+    }
+    _wallDragMode = null;
+    _wallDragStart = null;
+    _wallDragSnapshot = null;
+  }
+
+  /// Construit les widgets de poignées (drag handles) à afficher quand un
+  /// mur libre est sélectionné : extrémité 1, extrémité 2, et "poignée corps"
+  /// au milieu pour la translation. Chaque poignée est un GestureDetector
+  /// avec pan handlers.
+  List<Widget> _buildSelectedWallHandles(FreeWall w, Size size) {
+    if (widget.readOnly) return const [];
+    Offset toPx(double nx, double ny) =>
+        Offset(nx * size.width, ny * size.height);
+    final a = toPx(w.x1, w.y1);
+    final b = toPx(w.x2, w.y2);
+    final mid = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+    const handleSize = 20.0;
+    Widget handle({
+      required Offset center,
+      required _WallDragMode mode,
+      required Color color,
+      required IconData icon,
+    }) {
+      return Positioned(
+        left: center.dx - handleSize / 2,
+        top: center.dy - handleSize / 2,
+        width: handleSize,
+        height: handleSize,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (d) => _startWallDrag(mode, d.globalPosition),
+          onPanUpdate: (d) => _updateWallDrag(d.globalPosition, size),
+          onPanEnd: (_) => _endWallDrag(),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 2),
+              ],
+            ),
+            child: Icon(icon, size: 12, color: color),
+          ),
+        ),
+      );
+    }
+
+    return [
+      handle(
+        center: a,
+        mode: _WallDragMode.endpoint1,
+        color: const Color(0xFF2563EB),
+        icon: Icons.fiber_manual_record,
+      ),
+      handle(
+        center: b,
+        mode: _WallDragMode.endpoint2,
+        color: const Color(0xFF2563EB),
+        icon: Icons.fiber_manual_record,
+      ),
+      handle(
+        center: mid,
+        mode: _WallDragMode.body,
+        color: const Color(0xFF7C3AED),
+        icon: Icons.open_with,
+      ),
+    ];
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -4703,6 +5133,9 @@ enum _DragMode {
 
 enum _WallSide { top, right, bottom, left }
 
+/// Mode de drag sur un mur libre sélectionné.
+enum _WallDragMode { endpoint1, endpoint2, body }
+
 /// Résultat du dialog d'édition de mur : nouvelle longueur (en mètres) et/ou
 /// orientation cible ('h' = horizontale, 'v' = verticale).
 class _WallEditResult {
@@ -5766,6 +6199,316 @@ class _ScaleCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Card de la sidebar affichée quand un mur libre est sélectionné :
+/// montre son label (auto ou personnalisé), sa longueur (en mètres si
+/// calibré, sinon en %), et propose Renommer / Supprimer.
+class _SelectedWallCard extends StatelessWidget {
+  final PlanLogement plan;
+  final FreeWall wall;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  const _SelectedWallCard({
+    required this.plan,
+    required this.wall,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = plan.labelForWall(wall);
+    final autoLabel = plan.autoLabelForWall(wall);
+    final isAuto = wall.customLabel == null ||
+        wall.customLabel!.trim().isEmpty;
+    final lenNorm = math.sqrt(
+      math.pow(wall.x2 - wall.x1, 2) + math.pow(wall.y2 - wall.y1, 2),
+    ).toDouble();
+    final meters = plan.unitsToMeters(lenNorm);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAF5FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.linear_scale,
+                  size: 18, color: Color(0xFF5B21B6)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                    color: Color(0xFF4C1D95),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!isAuto) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Auto : $autoLabel',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            meters != null
+                ? 'Longueur : ${meters.toStringAsFixed(2)} m'
+                : 'Longueur : ${(lenNorm * 100).toStringAsFixed(1)} % du plan',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onRename,
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Renommer'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline),
+                color: AppColors.error,
+                tooltip: 'Supprimer',
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Painter de tous les murs libres du plan. Affiche un trait épais + le
+/// libellé centré au-dessus. Le mur sélectionné est mis en évidence.
+class _FreeWallsPainter extends CustomPainter {
+  final PlanLogement plan;
+  final String? selectedId;
+
+  _FreeWallsPainter({required this.plan, required this.selectedId});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    Offset toPx(double nx, double ny) =>
+        Offset(nx * size.width, ny * size.height);
+
+    for (final w in plan.freeWalls) {
+      final isSelected = w.id == selectedId;
+      final a = toPx(w.x1, w.y1);
+      final b = toPx(w.x2, w.y2);
+
+      // Ombre légère pour donner de l'épaisseur au mur.
+      final shadowPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.12)
+        ..strokeWidth = isSelected ? 12 : 9
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(a.translate(1, 1), b.translate(1, 1), shadowPaint);
+
+      final paint = Paint()
+        ..color = isSelected
+            ? const Color(0xFF7C3AED)
+            : const Color(0xFF334155)
+        ..strokeWidth = isSelected ? 8 : 6
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(a, b, paint);
+
+      // Libellé au-dessus du milieu du mur, perpendiculaire à celui-ci.
+      final label = plan.labelForWall(w);
+      final dx = b.dx - a.dx;
+      final dy = b.dy - a.dy;
+      final len = math.sqrt(dx * dx + dy * dy);
+      if (len < 30) continue; // mur trop court, skip
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: TextStyle(
+            color: isSelected
+                ? const Color(0xFF5B21B6)
+                : const Color(0xFF1E293B),
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            shadows: const [
+              Shadow(color: Colors.white, blurRadius: 3),
+              Shadow(color: Colors.white, blurRadius: 3),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      final mid = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+      final angle = math.atan2(dy, dx);
+      // Décalage perpendiculaire pour poser le texte au-dessus du mur.
+      final nx = -math.sin(angle);
+      final ny = math.cos(angle);
+      const offsetFromWall = 12.0;
+      final tx = mid.dx + nx * offsetFromWall - tp.width / 2;
+      final ty = mid.dy + ny * offsetFromWall - tp.height / 2;
+
+      canvas.save();
+      // Garde le texte droit si le mur est presque vertical (angle proche
+      // de ±π/2), sinon le tourne pour suivre le mur.
+      double rotAngle = angle;
+      // Garde le texte lisible (jamais à l'envers).
+      if (rotAngle > math.pi / 2) rotAngle -= math.pi;
+      if (rotAngle < -math.pi / 2) rotAngle += math.pi;
+      canvas.translate(tx + tp.width / 2, ty + tp.height / 2);
+      canvas.rotate(rotAngle);
+      canvas.translate(-tp.width / 2, -tp.height / 2);
+      tp.paint(canvas, Offset.zero);
+      canvas.restore();
+
+      // Si calibré, affichage discret de la longueur en mètres.
+      if (plan.isCalibrated) {
+        final lenNorm = math.sqrt(
+          math.pow(w.x2 - w.x1, 2) + math.pow(w.y2 - w.y1, 2),
+        );
+        final meters = plan.unitsToMeters(lenNorm.toDouble()) ?? 0;
+        final lp = TextPainter(
+          text: TextSpan(
+            text: '${meters.toStringAsFixed(2)} m',
+            style: const TextStyle(
+              color: Color(0xFF065F46),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              shadows: [Shadow(color: Colors.white, blurRadius: 2)],
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final lx = mid.dx - nx * offsetFromWall - lp.width / 2;
+        final ly = mid.dy - ny * offsetFromWall - lp.height / 2;
+        canvas.save();
+        canvas.translate(lx + lp.width / 2, ly + lp.height / 2);
+        canvas.rotate(rotAngle);
+        canvas.translate(-lp.width / 2, -lp.height / 2);
+        lp.paint(canvas, Offset.zero);
+        canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FreeWallsPainter old) =>
+      old.selectedId != selectedId ||
+      old.plan.freeWalls.length != plan.freeWalls.length ||
+      old.plan.scaleMetersPerUnit != plan.scaleMetersPerUnit ||
+      !_wallsEqual(old.plan.freeWalls, plan.freeWalls);
+
+  static bool _wallsEqual(List<FreeWall> a, List<FreeWall> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final wa = a[i];
+      final wb = b[i];
+      if (wa.id != wb.id ||
+          wa.x1 != wb.x1 ||
+          wa.y1 != wb.y1 ||
+          wa.x2 != wb.x2 ||
+          wa.y2 != wb.y2 ||
+          wa.customLabel != wb.customLabel) {
+        return false;
+      }
+    }
+    return true;
+  }
+}
+
+/// Painter affichant le 1ᵉʳ point posé pendant le mode "Tracer un mur"
+/// (avant le 2ᵉ point, qui finalise et crée le mur).
+class _DrawWallPreviewPainter extends CustomPainter {
+  final Offset? p1;
+  _DrawWallPreviewPainter({required this.p1});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (p1 == null) return;
+    final a = Offset(p1!.dx * size.width, p1!.dy * size.height);
+    final fill = Paint()..color = Colors.white;
+    final border = Paint()
+      ..color = const Color(0xFF7C3AED)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(a, 7, fill);
+    canvas.drawCircle(a, 7, border);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DrawWallPreviewPainter old) => old.p1 != p1;
+}
+
+/// Bannière affichée pendant le mode "Tracer un mur".
+class _DrawWallBanner extends StatelessWidget {
+  final bool point1Placed;
+  final VoidCallback onCancel;
+
+  const _DrawWallBanner({
+    required this.point1Placed,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xFF5B21B6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.linear_scale, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                point1Placed
+                    ? 'Clique le 2ᵉ point pour finaliser le mur.'
+                    : 'Clique le 1ᵉʳ point du mur (snap aux pièces existantes).',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: onCancel,
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Annuler'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

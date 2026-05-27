@@ -149,6 +149,7 @@ class LocalDatabase {
     _registerAdapter(RoomShapeAdapter());
     _registerAdapter(PlanAnnotationAdapter());
     _registerAdapter(WallPhotoAdapter());
+    _registerAdapter(FreeWallAdapter());
     _registerAdapter(DepenseAdapter());
     _registerAdapter(CreditImmobilierAdapter());
     _registerAdapter(RevisionLoyerAdapter());

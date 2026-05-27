@@ -386,6 +386,62 @@ class PlanAnnotation {
       );
 }
 
+/// Un mur libre tracé hors d'une pièce, déplaçable indépendamment. Numéroté
+/// automatiquement selon sa pièce de référence (la plus proche du milieu du
+/// mur) sous la forme « Mur Salon M12 » sauf si l'utilisateur le renomme.
+class FreeWall {
+  final String id;
+  double x1;
+  double y1;
+  double x2;
+  double y2;
+
+  /// Nom personnalisé saisi par l'utilisateur. Null = utiliser le label
+  /// calculé automatiquement par PlanLogement.autoLabelForWall.
+  String? customLabel;
+
+  FreeWall({
+    required this.id,
+    required this.x1,
+    required this.y1,
+    required this.x2,
+    required this.y2,
+    this.customLabel,
+  });
+
+  factory FreeWall.create({
+    required double x1,
+    required double y1,
+    required double x2,
+    required double y2,
+  }) =>
+      FreeWall(
+        id: const Uuid().v4(),
+        x1: x1,
+        y1: y1,
+        x2: x2,
+        y2: y2,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'x1': x1,
+        'y1': y1,
+        'x2': x2,
+        'y2': y2,
+        'customLabel': customLabel,
+      };
+
+  factory FreeWall.fromMap(Map<String, dynamic> m) => FreeWall(
+        id: m['id'] as String,
+        x1: (m['x1'] as num).toDouble(),
+        y1: (m['y1'] as num).toDouble(),
+        x2: (m['x2'] as num).toDouble(),
+        y2: (m['y2'] as num).toDouble(),
+        customLabel: m['customLabel'] as String?,
+      );
+}
+
 /// Un plan attaché à un logement, soit une image importée, soit un dessin
 /// vectoriel composé de [RoomShape]s.
 class PlanLogement {
@@ -397,6 +453,7 @@ class PlanLogement {
   List<RoomShape> rooms;
   List<PlanAnnotation> annotations;
   List<WallPhoto> wallPhotos;
+  List<FreeWall> freeWalls;
   int sortOrder;
   final DateTime createdAt;
   DateTime updatedAt;
@@ -418,8 +475,9 @@ class PlanLogement {
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
+    List<FreeWall>? freeWalls,
     this.scaleMetersPerUnit,
-  });
+  }) : freeWalls = freeWalls ?? <FreeWall>[];
 
   factory PlanLogement.create({
     required String logementId,
@@ -448,13 +506,48 @@ class PlanLogement {
   }
 
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
-  bool get hasDrawing => rooms.isNotEmpty;
+  bool get hasDrawing => rooms.isNotEmpty || freeWalls.isNotEmpty;
   bool get isCalibrated => scaleMetersPerUnit != null && scaleMetersPerUnit! > 0;
 
   /// Convertit une distance en unités normalisées (0..1) en mètres si le
   /// plan est calibré, sinon retourne null.
   double? unitsToMeters(double units) =>
       isCalibrated ? units * scaleMetersPerUnit! : null;
+
+  /// Libellé automatique pour un mur libre, basé sur la pièce dont le
+  /// centroïde est le plus proche du milieu du mur. Si aucune pièce dans
+  /// un rayon raisonnable, retombe sur « Mur M{index} ».
+  ///
+  /// Format : « Mur ${room.name} M${N} » où N est l'index 1-based du mur
+  /// dans la liste freeWalls (donc stable tant que l'utilisateur n'en
+  /// supprime pas).
+  String autoLabelForWall(FreeWall wall) {
+    final idx = freeWalls.indexOf(wall);
+    final n = idx >= 0 ? idx + 1 : freeWalls.length + 1;
+    final mx = (wall.x1 + wall.x2) / 2;
+    final my = (wall.y1 + wall.y2) / 2;
+    String? nearestRoom;
+    double bestDist = 0.18; // rayon max pour considérer un rattachement
+    for (final r in rooms) {
+      final cx = r.x + r.width / 2;
+      final cy = r.y + r.height / 2;
+      final dx = mx - cx;
+      final dy = my - cy;
+      final d = (dx * dx + dy * dy);
+      if (d < bestDist * bestDist) {
+        bestDist = d == 0 ? 1e-6 : d;
+        nearestRoom = r.name;
+      }
+    }
+    final base = nearestRoom == null ? 'Mur' : 'Mur $nearestRoom';
+    return '$base M$n';
+  }
+
+  /// Libellé effectif d'un mur (custom si défini, sinon auto).
+  String labelForWall(FreeWall wall) =>
+      (wall.customLabel != null && wall.customLabel!.trim().isNotEmpty)
+          ? wall.customLabel!
+          : autoLabelForWall(wall);
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -465,6 +558,7 @@ class PlanLogement {
         'rooms': rooms.map((r) => r.toMap()).toList(),
         'annotations': annotations.map((a) => a.toMap()).toList(),
         'wallPhotos': wallPhotos.map((w) => w.toMap()).toList(),
+        'freeWalls': freeWalls.map((w) => w.toMap()).toList(),
         'sortOrder': sortOrder,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'updatedAt': updatedAt.toUtc().toIso8601String(),
@@ -485,6 +579,9 @@ class PlanLogement {
             .toList(),
         wallPhotos: ((m['wallPhotos'] as List?) ?? const [])
             .map((e) => WallPhoto.fromMap(e as Map<String, dynamic>))
+            .toList(),
+        freeWalls: ((m['freeWalls'] as List?) ?? const [])
+            .map((e) => FreeWall.fromMap(e as Map<String, dynamic>))
             .toList(),
         sortOrder: (m['sortOrder'] as num).toInt(),
         createdAt: DateTime.parse(m['createdAt'] as String),
@@ -587,14 +684,19 @@ class PlanLogementAdapter extends TypeAdapter<PlanLogement> {
           ? (f[10] as List).cast<WallPhoto>()
           : <WallPhoto>[],
       scaleMetersPerUnit: (f[11] as num?)?.toDouble(),
+      freeWalls: f.containsKey(12)
+          ? (f[12] as List).cast<FreeWall>()
+          : <FreeWall>[],
     );
   }
 
   @override
   void write(BinaryWriter writer, PlanLogement obj) {
     final hasScale = obj.scaleMetersPerUnit != null;
+    final hasFreeWalls = obj.freeWalls.isNotEmpty;
+    final count = 11 + (hasScale ? 1 : 0) + (hasFreeWalls ? 1 : 0);
     writer
-      ..writeByte(hasScale ? 12 : 11)
+      ..writeByte(count)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -621,6 +723,54 @@ class PlanLogementAdapter extends TypeAdapter<PlanLogement> {
       writer
         ..writeByte(11)
         ..write(obj.scaleMetersPerUnit);
+    }
+    if (hasFreeWalls) {
+      writer
+        ..writeByte(12)
+        ..write(obj.freeWalls);
+    }
+  }
+}
+
+class FreeWallAdapter extends TypeAdapter<FreeWall> {
+  @override
+  final int typeId = 21;
+
+  @override
+  FreeWall read(BinaryReader reader) {
+    final n = reader.readByte();
+    final f = <int, dynamic>{
+      for (var i = 0; i < n; i++) reader.readByte(): reader.read(),
+    };
+    return FreeWall(
+      id: f[0] as String,
+      x1: (f[1] as num).toDouble(),
+      y1: (f[2] as num).toDouble(),
+      x2: (f[3] as num).toDouble(),
+      y2: (f[4] as num).toDouble(),
+      customLabel: f[5] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, FreeWall obj) {
+    final hasLabel = obj.customLabel != null;
+    writer
+      ..writeByte(hasLabel ? 6 : 5)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.x1)
+      ..writeByte(2)
+      ..write(obj.y1)
+      ..writeByte(3)
+      ..write(obj.x2)
+      ..writeByte(4)
+      ..write(obj.y2);
+    if (hasLabel) {
+      writer
+        ..writeByte(5)
+        ..write(obj.customLabel);
     }
   }
 }
