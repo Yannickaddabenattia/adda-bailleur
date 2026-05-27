@@ -400,6 +400,11 @@ class FreeWall {
   /// calculé automatiquement par PlanLogement.autoLabelForWall.
   String? customLabel;
 
+  /// `true` = mur virtuel (ouverture / séparation visuelle entre 2 espaces
+  /// ouverts) : rendu en pointillé, nommé "Séparation A / B". `false` = mur
+  /// réel classique (trait plein, nommé "Mur {pièce} M{N}").
+  bool isVirtual;
+
   FreeWall({
     required this.id,
     required this.x1,
@@ -407,6 +412,7 @@ class FreeWall {
     required this.x2,
     required this.y2,
     this.customLabel,
+    this.isVirtual = false,
   });
 
   factory FreeWall.create({
@@ -414,6 +420,7 @@ class FreeWall {
     required double y1,
     required double x2,
     required double y2,
+    bool isVirtual = false,
   }) =>
       FreeWall(
         id: const Uuid().v4(),
@@ -421,6 +428,7 @@ class FreeWall {
         y1: y1,
         x2: x2,
         y2: y2,
+        isVirtual: isVirtual,
       );
 
   Map<String, dynamic> toMap() => {
@@ -430,6 +438,7 @@ class FreeWall {
         'x2': x2,
         'y2': y2,
         'customLabel': customLabel,
+        'isVirtual': isVirtual,
       };
 
   factory FreeWall.fromMap(Map<String, dynamic> m) => FreeWall(
@@ -439,6 +448,7 @@ class FreeWall {
         x2: (m['x2'] as num).toDouble(),
         y2: (m['y2'] as num).toDouble(),
         customLabel: m['customLabel'] as String?,
+        isVirtual: (m['isVirtual'] as bool?) ?? false,
       );
 }
 
@@ -514,20 +524,30 @@ class PlanLogement {
   double? unitsToMeters(double units) =>
       isCalibrated ? units * scaleMetersPerUnit! : null;
 
-  /// Libellé automatique pour un mur libre, basé sur la pièce dont le
-  /// centroïde est le plus proche du milieu du mur. Si aucune pièce dans
-  /// un rayon raisonnable, retombe sur « Mur M{index} ».
+  /// Libellé automatique pour un mur libre. Comportement :
   ///
-  /// Format : « Mur ${room.name} M${N} » où N est l'index 1-based du mur
-  /// dans la liste freeWalls (donc stable tant que l'utilisateur n'en
-  /// supprime pas).
+  /// - **Mur réel** : « Mur ${pieceProche} M${N} » où N est l'index 1-based
+  ///   du mur dans freeWalls. Cherche la pièce dont le centroïde est le
+  ///   plus proche du milieu du mur.
+  /// - **Mur virtuel** : tente d'identifier les 2 pièces de part et d'autre
+  ///   du mur (en regardant les pièces qui contiennent chacune des extrémités
+  ///   ou sont les plus proches). Si 2 pièces distinctes trouvées →
+  ///   « Séparation A / B ». Si 1 seule → « Séparation interne A ». Sinon →
+  ///   « Mur virtuel M{N} ».
   String autoLabelForWall(FreeWall wall) {
     final idx = freeWalls.indexOf(wall);
     final n = idx >= 0 ? idx + 1 : freeWalls.length + 1;
+    if (wall.isVirtual) {
+      return _virtualWallLabel(wall, n);
+    }
+    return _solidWallLabel(wall, n);
+  }
+
+  String _solidWallLabel(FreeWall wall, int n) {
     final mx = (wall.x1 + wall.x2) / 2;
     final my = (wall.y1 + wall.y2) / 2;
     String? nearestRoom;
-    double bestDist = 0.18; // rayon max pour considérer un rattachement
+    double bestDist = 0.18;
     for (final r in rooms) {
       final cx = r.x + r.width / 2;
       final cy = r.y + r.height / 2;
@@ -541,6 +561,59 @@ class PlanLogement {
     }
     final base = nearestRoom == null ? 'Mur' : 'Mur $nearestRoom';
     return '$base M$n';
+  }
+
+  String _virtualWallLabel(FreeWall wall, int n) {
+    // Trouve les pièces "à proximité" de chaque extrémité (qui contiennent
+    // le point dans leur bbox, ou dont le centroïde est très proche).
+    final p1 = (wall.x1, wall.y1);
+    final p2 = (wall.x2, wall.y2);
+    final roomA = _bestMatchingRoom(p1.$1, p1.$2);
+    final roomB = _bestMatchingRoom(p2.$1, p2.$2);
+    if (roomA != null && roomB != null) {
+      if (roomA.id == roomB.id) {
+        return 'Séparation interne ${roomA.name}';
+      }
+      // Trie alphabétique pour stabilité du libellé quelle que soit l'ordre
+      // dans lequel on a posé les points.
+      final names = [roomA.name, roomB.name]..sort();
+      return 'Séparation ${names[0]} / ${names[1]}';
+    }
+    if (roomA != null || roomB != null) {
+      final r = roomA ?? roomB!;
+      return 'Séparation ${r.name}';
+    }
+    return 'Mur virtuel M$n';
+  }
+
+  /// Trouve la pièce la plus pertinente pour un point donné : prend la
+  /// pièce dont la bbox contient le point ; à défaut la plus proche dans
+  /// un rayon de 8% du canvas.
+  RoomShape? _bestMatchingRoom(double x, double y) {
+    // Priorité : bbox contenant le point.
+    for (final r in rooms) {
+      if (x >= r.x &&
+          x <= r.x + r.width &&
+          y >= r.y &&
+          y <= r.y + r.height) {
+        return r;
+      }
+    }
+    // Sinon : la plus proche dans un rayon raisonnable.
+    RoomShape? best;
+    double bestDist = 0.08;
+    for (final r in rooms) {
+      final cx = r.x + r.width / 2;
+      final cy = r.y + r.height / 2;
+      final dx = x - cx;
+      final dy = y - cy;
+      final d2 = dx * dx + dy * dy;
+      if (d2 < bestDist * bestDist) {
+        bestDist = d2 == 0 ? 1e-6 : d2;
+        best = r;
+      }
+    }
+    return best;
   }
 
   /// Libellé effectif d'un mur (custom si défini, sinon auto).
@@ -749,14 +822,17 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
       x2: (f[3] as num).toDouble(),
       y2: (f[4] as num).toDouble(),
       customLabel: f[5] as String?,
+      isVirtual: (f[6] as bool?) ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, FreeWall obj) {
     final hasLabel = obj.customLabel != null;
+    final hasVirtual = obj.isVirtual;
+    final count = 5 + (hasLabel ? 1 : 0) + (hasVirtual ? 1 : 0);
     writer
-      ..writeByte(hasLabel ? 6 : 5)
+      ..writeByte(count)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -771,6 +847,11 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
       writer
         ..writeByte(5)
         ..write(obj.customLabel);
+    }
+    if (hasVirtual) {
+      writer
+        ..writeByte(6)
+        ..write(true);
     }
   }
 }

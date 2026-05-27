@@ -459,6 +459,11 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     if (state == null) return;
                     state.startDrawWall();
                   },
+                  onStartDrawVirtualWall: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.startDrawWall(virtual: true);
+                  },
                   selectedWall: _findSelectedWall(plan),
                   onRenameWall: () {
                     final state = _drawerKey.currentState;
@@ -469,6 +474,11 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     final state = _drawerKey.currentState;
                     if (state == null) return;
                     state.deleteSelectedWall();
+                  },
+                  onToggleWallVirtual: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    state.toggleSelectedWallVirtual();
                   },
                   onPickColor: (idx) =>
                       _drawerKey.currentState?.setRoomColorIndex(idx),
@@ -943,8 +953,10 @@ class _PlanSidebar extends StatelessWidget {
   final VoidCallback onStartCalibrate;
   final VoidCallback onClearCalibrate;
   final VoidCallback onStartDrawWall;
+  final VoidCallback onStartDrawVirtualWall;
   final VoidCallback onRenameWall;
   final VoidCallback onDeleteWall;
+  final VoidCallback onToggleWallVirtual;
   final ValueChanged<int> onPickColor;
   final VoidCallback onRename;
   final VoidCallback onDelete;
@@ -961,8 +973,10 @@ class _PlanSidebar extends StatelessWidget {
     required this.onStartCalibrate,
     required this.onClearCalibrate,
     required this.onStartDrawWall,
+    required this.onStartDrawVirtualWall,
     required this.onRenameWall,
     required this.onDeleteWall,
+    required this.onToggleWallVirtual,
     required this.onPickColor,
     required this.onRename,
     required this.onDelete,
@@ -1021,6 +1035,11 @@ class _PlanSidebar extends StatelessWidget {
               label: '🧱 Tracer un mur',
               onTap: onStartDrawWall,
             ),
+            const SizedBox(height: 8),
+            _DashedAddButton(
+              label: '┄ Tracer un mur virtuel',
+              onTap: onStartDrawVirtualWall,
+            ),
             const SizedBox(height: 22),
           ],
           const _SectionHeader('Échelle du plan'),
@@ -1054,6 +1073,7 @@ class _PlanSidebar extends StatelessWidget {
               wall: selectedWall!,
               onRename: onRenameWall,
               onDelete: onDeleteWall,
+              onToggleVirtual: onToggleWallVirtual,
             ),
           ],
           const SizedBox(height: 22),
@@ -1856,6 +1876,10 @@ class _DrawerViewState extends State<_DrawerView> {
   bool _drawWallMode = false;
   Offset? _drawWallPoint1;
 
+  /// Si true, le mur en cours de tracé sera créé en virtuel (pointillé,
+  /// nommé "Séparation A / B"). Activable depuis le bandeau de tracé.
+  bool _drawWallVirtual = false;
+
   /// Etat du drag en cours sur un mur libre sélectionné.
   _WallDragMode? _wallDragMode;
   Offset? _wallDragStart;
@@ -2108,6 +2132,8 @@ class _DrawerViewState extends State<_DrawerView> {
                   right: 8,
                   child: _DrawWallBanner(
                     point1Placed: _drawWallPoint1 != null,
+                    isVirtual: _drawWallVirtual,
+                    onToggleVirtual: toggleDrawWallVirtual,
                     onCancel: cancelDrawWall,
                   ),
                 ),
@@ -3577,10 +3603,11 @@ class _DrawerViewState extends State<_DrawerView> {
   //   Mode « Tracer un mur » + sélection/drag de murs libres
   // ───────────────────────────────────────────────────────────────────────
 
-  void startDrawWall() {
+  void startDrawWall({bool virtual = false}) {
     if (widget.readOnly) return;
     setState(() {
       _drawWallMode = true;
+      _drawWallVirtual = virtual;
       _drawWallPoint1 = null;
       _freeDrawMode = false;
       _freeDrawPoints.clear();
@@ -3598,6 +3625,18 @@ class _DrawerViewState extends State<_DrawerView> {
       _drawWallMode = false;
       _drawWallPoint1 = null;
     });
+  }
+
+  void toggleDrawWallVirtual() {
+    setState(() => _drawWallVirtual = !_drawWallVirtual);
+  }
+
+  /// Bascule l'état "mur virtuel" du mur libre actuellement sélectionné.
+  void toggleSelectedWallVirtual() {
+    final w = _selectedWall();
+    if (w == null) return;
+    setState(() => w.isVirtual = !w.isVirtual);
+    widget.onChanged();
   }
 
   void _handleDrawWallTap(Offset pos, Size canvas) {
@@ -3625,6 +3664,7 @@ class _DrawerViewState extends State<_DrawerView> {
       y1: p1.dy,
       x2: p2.dx,
       y2: p2.dy,
+      isVirtual: _drawWallVirtual,
     );
     setState(() {
       widget.plan.freeWalls.add(wall);
@@ -6212,12 +6252,14 @@ class _SelectedWallCard extends StatelessWidget {
   final FreeWall wall;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+  final VoidCallback onToggleVirtual;
 
   const _SelectedWallCard({
     required this.plan,
     required this.wall,
     required this.onRename,
     required this.onDelete,
+    required this.onToggleVirtual,
   });
 
   @override
@@ -6234,25 +6276,38 @@ class _SelectedWallCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAF5FF),
+        color: wall.isVirtual
+            ? const Color(0xFFFEF3C7)
+            : const Color(0xFFFAF5FF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.35)),
+        border: Border.all(
+          color: wall.isVirtual
+              ? const Color(0xFFD97706).withValues(alpha: 0.45)
+              : const Color(0xFF7C3AED).withValues(alpha: 0.35),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.linear_scale,
-                  size: 18, color: Color(0xFF5B21B6)),
+              Icon(
+                wall.isVirtual ? Icons.more_horiz : Icons.linear_scale,
+                size: 18,
+                color: wall.isVirtual
+                    ? const Color(0xFF92400E)
+                    : const Color(0xFF5B21B6),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: Color(0xFF4C1D95),
+                    color: wall.isVirtual
+                        ? const Color(0xFF78350F)
+                        : const Color(0xFF4C1D95),
                   ),
                 ),
               ),
@@ -6276,7 +6331,26 @@ class _SelectedWallCard extends StatelessWidget {
                 : 'Longueur : ${(lenNorm * 100).toStringAsFixed(1)} % du plan',
             style: const TextStyle(fontSize: 12),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          SwitchListTile.adaptive(
+            value: wall.isVirtual,
+            onChanged: (_) => onToggleVirtual(),
+            title: const Text(
+              'Mur virtuel (pointillé)',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              wall.isVirtual
+                  ? 'Représente une ouverture entre 2 espaces.'
+                  : 'Représente une cloison réelle.',
+              style: TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary),
+            ),
+            contentPadding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            dense: true,
+          ),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
@@ -6320,25 +6394,38 @@ class _FreeWallsPainter extends CustomPainter {
 
     for (final w in plan.freeWalls) {
       final isSelected = w.id == selectedId;
+      final isVirtual = w.isVirtual;
       final a = toPx(w.x1, w.y1);
       final b = toPx(w.x2, w.y2);
 
-      // Ombre légère pour donner de l'épaisseur au mur.
-      final shadowPaint = Paint()
-        ..color = Colors.black.withValues(alpha: 0.12)
-        ..strokeWidth = isSelected ? 12 : 9
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-      canvas.drawLine(a.translate(1, 1), b.translate(1, 1), shadowPaint);
+      if (isVirtual) {
+        // Mur virtuel : pointillé sans ombre, plus fin et plus clair.
+        final paint = Paint()
+          ..color = isSelected
+              ? const Color(0xFF0EA5E9)
+              : const Color(0xFF64748B)
+          ..strokeWidth = isSelected ? 4.5 : 3
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        _drawDashedSegment(canvas, a, b, paint, dash: 10, gap: 6);
+      } else {
+        // Mur réel : trait plein épais avec ombre légère.
+        final shadowPaint = Paint()
+          ..color = Colors.black.withValues(alpha: 0.12)
+          ..strokeWidth = isSelected ? 12 : 9
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(a.translate(1, 1), b.translate(1, 1), shadowPaint);
 
-      final paint = Paint()
-        ..color = isSelected
-            ? const Color(0xFF7C3AED)
-            : const Color(0xFF334155)
-        ..strokeWidth = isSelected ? 8 : 6
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-      canvas.drawLine(a, b, paint);
+        final paint = Paint()
+          ..color = isSelected
+              ? const Color(0xFF7C3AED)
+              : const Color(0xFF334155)
+          ..strokeWidth = isSelected ? 8 : 6
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(a, b, paint);
+      }
 
       // Libellé au-dessus du milieu du mur, perpendiculaire à celui-ci.
       final label = plan.labelForWall(w);
@@ -6433,11 +6520,39 @@ class _FreeWallsPainter extends CustomPainter {
           wa.y1 != wb.y1 ||
           wa.x2 != wb.x2 ||
           wa.y2 != wb.y2 ||
-          wa.customLabel != wb.customLabel) {
+          wa.customLabel != wb.customLabel ||
+          wa.isVirtual != wb.isVirtual) {
         return false;
       }
     }
     return true;
+  }
+
+  void _drawDashedSegment(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    Paint paint, {
+    required double dash,
+    required double gap,
+  }) {
+    final total = (b - a).distance;
+    if (total < 1) {
+      canvas.drawLine(a, b, paint);
+      return;
+    }
+    final dx = (b.dx - a.dx) / total;
+    final dy = (b.dy - a.dy) / total;
+    double pos = 0;
+    while (pos < total) {
+      final start = Offset(a.dx + dx * pos, a.dy + dy * pos);
+      final end = Offset(
+        a.dx + dx * math.min(pos + dash, total),
+        a.dy + dy * math.min(pos + dash, total),
+      );
+      canvas.drawLine(start, end, paint);
+      pos += dash + gap;
+    }
   }
 }
 
@@ -6464,13 +6579,19 @@ class _DrawWallPreviewPainter extends CustomPainter {
   bool shouldRepaint(covariant _DrawWallPreviewPainter old) => old.p1 != p1;
 }
 
-/// Bannière affichée pendant le mode "Tracer un mur".
+/// Bannière affichée pendant le mode "Tracer un mur". Inclut un toggle
+/// pour basculer entre mur réel (trait plein) et mur virtuel (pointillé,
+/// pour matérialiser une ouverture / séparation entre 2 espaces ouverts).
 class _DrawWallBanner extends StatelessWidget {
   final bool point1Placed;
+  final bool isVirtual;
+  final VoidCallback onToggleVirtual;
   final VoidCallback onCancel;
 
   const _DrawWallBanner({
     required this.point1Placed,
+    required this.isVirtual,
+    required this.onToggleVirtual,
     required this.onCancel,
   });
 
@@ -6484,13 +6605,17 @@ class _DrawWallBanner extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            const Icon(Icons.linear_scale, color: Colors.white, size: 18),
+            Icon(
+              isVirtual ? Icons.more_horiz : Icons.linear_scale,
+              color: Colors.white,
+              size: 18,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 point1Placed
-                    ? 'Clique le 2ᵉ point pour finaliser le mur.'
-                    : 'Clique le 1ᵉʳ point du mur (snap aux pièces existantes).',
+                    ? '${isVirtual ? "Mur virtuel" : "Mur réel"} — clique le 2ᵉ point.'
+                    : '${isVirtual ? "Mur virtuel" : "Mur réel"} — clique le 1ᵉʳ point.',
                 style: const TextStyle(
                     color: Colors.white, fontSize: 13, height: 1.2),
                 maxLines: 2,
@@ -6498,6 +6623,44 @@ class _DrawWallBanner extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            InkWell(
+              onTap: onToggleVirtual,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isVirtual
+                      ? Colors.amber.withValues(alpha: 0.85)
+                      : Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isVirtual ? Icons.check : Icons.more_horiz,
+                      size: 14,
+                      color: isVirtual
+                          ? const Color(0xFF7A4F00)
+                          : Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Virtuel',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isVirtual
+                            ? const Color(0xFF7A4F00)
+                            : Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
             TextButton.icon(
               onPressed: onCancel,
               icon: const Icon(Icons.close, size: 16),
