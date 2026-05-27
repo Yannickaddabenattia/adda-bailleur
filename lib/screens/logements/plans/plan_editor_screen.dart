@@ -438,11 +438,7 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                   onAddFormeLibre: () {
                     final state = _drawerKey.currentState;
                     if (state == null) return;
-                    if (selectedRoom != null) {
-                      state.toggleFormeLibre();
-                    } else {
-                      state.addRoomFromPalette('Pièce en L');
-                    }
+                    state.startFreeDraw();
                   },
                   onPickColor: (idx) =>
                       _drawerKey.currentState?.setRoomColorIndex(idx),
@@ -966,7 +962,7 @@ class _PlanSidebar extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _DashedAddButton(
-              label: '+ Forme libre',
+              label: '✏️ Tracer une pièce',
               onTap: onAddFormeLibre,
             ),
             const SizedBox(height: 22),
@@ -1736,6 +1732,28 @@ class _DrawerViewState extends State<_DrawerView> {
   /// Quand actif, un tap sur une pièce pose un repère au lieu de la sélectionner.
   bool _annotateMode = false;
 
+  /// Mode « Tracer une pièce » : chaque tap sur le canvas pose un sommet.
+  /// Quand l'utilisateur tape près du premier sommet (avec au moins 3 sommets
+  /// posés), le polygone se ferme automatiquement.
+  bool _freeDrawMode = false;
+  final List<Offset> _freeDrawPoints = <Offset>[];
+
+  /// Position courante du curseur (desktop) pour afficher une ligne d'aperçu
+  /// entre le dernier sommet posé et le pointeur. Sur mobile, reste null.
+  Offset? _freeDrawHover;
+
+  /// Contraint le segment courant à un multiple de 45° par rapport au sommet
+  /// précédent. Activable depuis la bannière du mode tracé.
+  bool _freeDrawOrthoLock = false;
+
+  /// Rayon (en proportion du canvas) autour du premier sommet où un tap
+  /// déclenche la fermeture automatique du polygone.
+  static const double _freeDrawCloseRadius = 0.035;
+
+  /// Rayon (en proportion du canvas) autour des sommets / murs existants
+  /// pour le magnétisme. Plus petit que la fermeture pour éviter la confusion.
+  static const double _freeDrawSnapRadius = 0.02;
+
   /// En mode prise de photos depuis l'EDL (readOnly + allowWallPhotoCapture),
   /// pièce verrouillée par appui long. Tant qu'une pièce est verrouillée,
   /// seuls ses badges de murs restent visibles et capturables — afin que
@@ -1871,6 +1889,12 @@ class _DrawerViewState extends State<_DrawerView> {
         final sel = _selectedRoom();
         final cx = sel == null ? 0.5 : sel.x + sel.width / 2;
         final cy = sel == null ? 0.5 : sel.y + sel.height / 2;
+        // Aperçu du polygone en cours dans le mode tracé.
+        final willClose = _freeDrawMode &&
+            _freeDrawPoints.length >= 3 &&
+            _freeDrawHover != null &&
+            (_freeDrawHover! - _freeDrawPoints.first).distance <
+                _freeDrawCloseRadius;
         return ClipRect(
           child: Stack(
             children: [
@@ -1886,29 +1910,66 @@ class _DrawerViewState extends State<_DrawerView> {
                       (2 * cx - 1).clamp(-1.0, 1.0),
                       (2 * cy - 1).clamp(-1.0, 1.0),
                     ),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp: (d) => _onTap(d.localPosition, size),
-                      child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(painter: _GridPainter()),
-                        ),
-                        // Si une pièce est verrouillée pour la capture
-                        // photo, on la dessine en dernier afin que ses
-                        // badges restent au-dessus de toute pièce voisine
-                        // qui dépasse.
-                        ..._roomsForRender()
-                            .map((r) => _buildRoom(r, size, wallNumbers)),
-                        ...annotationOrder.asMap().entries.map(
-                              (e) => _buildPin(e.value, e.key + 1, size),
+                    child: MouseRegion(
+                      onHover: _freeDrawMode
+                          ? (e) => _updateFreeDrawHover(e.localPosition, size)
+                          : null,
+                      cursor: _freeDrawMode
+                          ? SystemMouseCursors.precise
+                          : MouseCursor.defer,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (d) => _onTap(d.localPosition, size),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: CustomPaint(painter: _GridPainter()),
                             ),
-                      ],
+                            // Si une pièce est verrouillée pour la capture
+                            // photo, on la dessine en dernier afin que ses
+                            // badges restent au-dessus de toute pièce voisine
+                            // qui dépasse.
+                            ..._roomsForRender()
+                                .map((r) => _buildRoom(r, size, wallNumbers)),
+                            ...annotationOrder.asMap().entries.map(
+                                  (e) => _buildPin(e.value, e.key + 1, size),
+                                ),
+                            if (_freeDrawMode)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _FreeDrawPreviewPainter(
+                                      points: _freeDrawPoints,
+                                      hover: _freeDrawHover,
+                                      closeRadius: _freeDrawCloseRadius,
+                                      willClose: willClose,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                ),
               ),
+              if (_freeDrawMode)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: _FreeDrawBanner(
+                    pointCount: _freeDrawPoints.length,
+                    orthoLock: _freeDrawOrthoLock,
+                    onToggleOrtho: toggleFreeDrawOrthoLock,
+                    onUndoPoint: undoLastFreeDrawPoint,
+                    onCancel: cancelFreeDraw,
+                    onFinish: _freeDrawPoints.length >= 3
+                        ? _finalizeFreeDraw
+                        : null,
+                  ),
+                ),
               if (_zoom > 1.0)
                 Positioned(
                   right: 8,
@@ -3317,8 +3378,275 @@ class _DrawerViewState extends State<_DrawerView> {
   }
 
   void _onTap(Offset pos, Size canvas) {
+    if (_freeDrawMode) {
+      _handleFreeDrawTap(pos, canvas);
+      return;
+    }
     // Tap sur le canvas vide : déselectionne.
     widget.onSelect(null);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  //   Mode « Tracer une pièce » (dessin libre point par point)
+  // ───────────────────────────────────────────────────────────────────────
+
+  /// Entre dans le mode tracé : désélectionne, vide l'historique de sommets,
+  /// affiche la bannière de contrôle et attend les taps sur le canvas.
+  /// Appelé depuis le bouton « Tracer une pièce » de la sidebar/palette.
+  void startFreeDraw() {
+    if (widget.readOnly) return;
+    setState(() {
+      _freeDrawMode = true;
+      _freeDrawPoints.clear();
+      _freeDrawHover = null;
+      _freeDrawOrthoLock = false;
+      _annotateMode = false;
+      widget.onSelect(null);
+    });
+  }
+
+  /// Annule le tracé en cours et quitte le mode.
+  void cancelFreeDraw() {
+    setState(() {
+      _freeDrawMode = false;
+      _freeDrawPoints.clear();
+      _freeDrawHover = null;
+    });
+  }
+
+  /// Retire le dernier sommet posé. Si la liste est vide, sort du mode.
+  void undoLastFreeDrawPoint() {
+    setState(() {
+      if (_freeDrawPoints.isNotEmpty) {
+        _freeDrawPoints.removeLast();
+      } else {
+        _freeDrawMode = false;
+      }
+    });
+  }
+
+  /// Active/désactive la contrainte d'angle (multiples de 45°).
+  void toggleFreeDrawOrthoLock() {
+    setState(() => _freeDrawOrthoLock = !_freeDrawOrthoLock);
+  }
+
+  /// Met à jour la position d'aperçu (sur desktop, via MouseRegion).
+  void _updateFreeDrawHover(Offset pos, Size canvas) {
+    if (!_freeDrawMode) return;
+    setState(() {
+      _freeDrawHover = Offset(
+        (pos.dx / canvas.width).clamp(0.0, 1.0),
+        (pos.dy / canvas.height).clamp(0.0, 1.0),
+      );
+    });
+  }
+
+  /// Gestion d'un tap dans le mode tracé : ajoute un sommet, applique le snap
+  /// aux sommets/murs existants, applique la contrainte d'angle si active,
+  /// et ferme le polygone si on tape près du premier sommet (≥ 3 sommets).
+  void _handleFreeDrawTap(Offset pos, Size canvas) {
+    final raw = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
+
+    // Fermeture automatique : tap près du premier sommet (≥ 3 sommets).
+    if (_freeDrawPoints.length >= 3) {
+      final start = _freeDrawPoints.first;
+      if ((raw - start).distance < _freeDrawCloseRadius) {
+        _finalizeFreeDraw();
+        return;
+      }
+    }
+
+    // 1) Snap aux sommets et murs existants.
+    Offset point = _snapToExistingGeometry(raw);
+
+    // 2) Contrainte d'angle (multiples de 45°) relative au sommet précédent.
+    if (_freeDrawOrthoLock && _freeDrawPoints.isNotEmpty) {
+      point = _applyOrthoLock(_freeDrawPoints.last, point);
+    }
+
+    setState(() {
+      _freeDrawPoints.add(point);
+      _freeDrawHover = point;
+    });
+  }
+
+  /// Cherche un point d'accrochage parmi les sommets puis les arêtes des
+  /// pièces existantes. Retourne le point d'accrochage si trouvé, sinon `p`.
+  Offset _snapToExistingGeometry(Offset p) {
+    Offset best = p;
+    double bestDist = _freeDrawSnapRadius;
+
+    for (final r in widget.plan.rooms) {
+      // Sommets de la pièce (polygone ou rectangle).
+      final corners = _roomCorners(r);
+      for (final c in corners) {
+        final d = (p - c).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = c;
+        }
+      }
+    }
+    if (best != p) return best;
+
+    // Aucun sommet proche : on tente le snap sur les arêtes (projection).
+    bestDist = _freeDrawSnapRadius;
+    for (final r in widget.plan.rooms) {
+      final edges = _roomEdges(r);
+      for (final e in edges) {
+        final proj = _projectOnSegment(p, e[0], e[1]);
+        if (proj == null) continue;
+        final d = (p - proj).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = proj;
+        }
+      }
+    }
+    return best;
+  }
+
+  /// Retourne les 4 coins du rectangle ou les sommets du polygone, en
+  /// coordonnées normalisées.
+  List<Offset> _roomCorners(RoomShape r) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      return [
+        for (var i = 0; i < v.length; i += 2) Offset(v[i], v[i + 1]),
+      ];
+    }
+    return [
+      Offset(r.x, r.y),
+      Offset(r.x + r.width, r.y),
+      Offset(r.x + r.width, r.y + r.height),
+      Offset(r.x, r.y + r.height),
+    ];
+  }
+
+  /// Retourne les arêtes (paires de points) d'une pièce.
+  List<List<Offset>> _roomEdges(RoomShape r) {
+    final corners = _roomCorners(r);
+    final edges = <List<Offset>>[];
+    for (var i = 0; i < corners.length; i++) {
+      final a = corners[i];
+      final b = corners[(i + 1) % corners.length];
+      edges.add([a, b]);
+    }
+    return edges;
+  }
+
+  /// Projette `p` sur le segment [a,b]. Retourne le point projeté si la
+  /// projection tombe sur le segment (paramètre t ∈ [0,1]), sinon null.
+  Offset? _projectOnSegment(Offset p, Offset a, Offset b) {
+    final abx = b.dx - a.dx;
+    final aby = b.dy - a.dy;
+    final len2 = abx * abx + aby * aby;
+    if (len2 < 1e-9) return null;
+    final t = ((p.dx - a.dx) * abx + (p.dy - a.dy) * aby) / len2;
+    if (t < 0 || t > 1) return null;
+    return Offset(a.dx + t * abx, a.dy + t * aby);
+  }
+
+  /// Contraint le vecteur `last → cur` à un multiple de 45°, en conservant
+  /// la distance entre les deux points.
+  Offset _applyOrthoLock(Offset last, Offset cur) {
+    final dx = cur.dx - last.dx;
+    final dy = cur.dy - last.dy;
+    final dist = math.sqrt(dx * dx + dy * dy);
+    if (dist < 1e-6) return cur;
+    final angle = math.atan2(dy, dx);
+    const step = math.pi / 4; // 45°
+    final snappedAngle = (angle / step).round() * step;
+    return Offset(
+      last.dx + dist * math.cos(snappedAngle),
+      last.dy + dist * math.sin(snappedAngle),
+    );
+  }
+
+  /// Termine le tracé : prompt pour nommer la pièce puis crée le RoomShape
+  /// polygonal. Si moins de 3 sommets, refuse.
+  Future<void> _finalizeFreeDraw() async {
+    if (_freeDrawPoints.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trace au moins 3 sommets.')),
+      );
+      return;
+    }
+    final pts = List<Offset>.from(_freeDrawPoints);
+    setState(() {
+      _freeDrawMode = false;
+      _freeDrawPoints.clear();
+      _freeDrawHover = null;
+    });
+    final name = await _promptFreeDrawRoomName();
+    if (name == null) return; // annulé
+    _createRoomFromFreeDrawPolygon(name, pts);
+  }
+
+  /// Affiche un dialog demandant le nom de la pièce. Retourne null si annulé.
+  Future<String?> _promptFreeDrawRoomName() async {
+    final controller = TextEditingController(text: 'Pièce');
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nommer la pièce'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nom',
+            hintText: 'ex. Salon, Chambre 1…',
+          ),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v.trim().isEmpty ? 'Pièce' : v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              Navigator.of(ctx).pop(v.isEmpty ? 'Pièce' : v);
+            },
+            child: const Text('Créer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Crée une nouvelle pièce polygonale à partir de la liste de sommets.
+  void _createRoomFromFreeDrawPolygon(String name, List<Offset> pts) {
+    final flat = <double>[];
+    for (final p in pts) {
+      flat..add(p.dx)..add(p.dy);
+    }
+    double minX = pts.first.dx, maxX = pts.first.dx;
+    double minY = pts.first.dy, maxY = pts.first.dy;
+    for (final p in pts) {
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    final idx = widget.plan.rooms.length % _colors.length;
+    final room = RoomShape.create(
+      name: name,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      colorIndex: idx,
+    )..vertices = flat;
+    setState(() {
+      widget.plan.rooms.add(room);
+      widget.onSelect(room.id);
+    });
+    widget.onChanged();
   }
 
   /// Échelle réelle du canvas (12 m × 12 m).
@@ -4233,6 +4561,123 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Painter qui dessine le polygone en cours de tracé dans le mode
+/// « Tracer une pièce » : segments déjà posés + ligne d'aperçu jusqu'au
+/// pointeur + cercles aux sommets + zone de fermeture autour du 1er sommet.
+class _FreeDrawPreviewPainter extends CustomPainter {
+  /// Sommets posés en coordonnées normalisées 0..1.
+  final List<Offset> points;
+
+  /// Position courante du curseur (normalisée). Null = pas d'aperçu.
+  final Offset? hover;
+
+  /// Rayon de fermeture (normalisé) autour du premier sommet.
+  final double closeRadius;
+
+  /// Indique si l'aperçu fermerait le polygone (utilisé pour colorer la
+  /// ligne d'aperçu en vert et grossir le 1er sommet).
+  final bool willClose;
+
+  _FreeDrawPreviewPainter({
+    required this.points,
+    required this.hover,
+    required this.closeRadius,
+    required this.willClose,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+    Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+
+    final segPaint = Paint()
+      ..color = const Color(0xFF2563EB)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    // Segments posés.
+    for (var i = 0; i < points.length - 1; i++) {
+      canvas.drawLine(toPx(points[i]), toPx(points[i + 1]), segPaint);
+    }
+
+    // Ligne d'aperçu (dernier sommet → curseur).
+    if (hover != null && points.isNotEmpty) {
+      final previewPaint = Paint()
+        ..color = willClose
+            ? const Color(0xFF16A34A)
+            : const Color(0xFF2563EB).withValues(alpha: 0.55)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+      _drawDashedLine(canvas, toPx(points.last), toPx(hover!), previewPaint);
+
+      // Si la fermeture est imminente, on relie aussi visuellement le curseur
+      // au premier sommet en pointillé vert clair.
+      if (willClose && points.length >= 3) {
+        final closePaint = Paint()
+          ..color = const Color(0xFF16A34A).withValues(alpha: 0.5)
+          ..strokeWidth = 1.5
+          ..style = PaintingStyle.stroke;
+        _drawDashedLine(canvas, toPx(hover!), toPx(points.first), closePaint);
+      }
+    }
+
+    // Zone de fermeture autour du premier sommet (≥ 3 sommets posés).
+    if (points.length >= 3) {
+      final radiusPx = closeRadius * math.min(size.width, size.height);
+      final zonePaint = Paint()
+        ..color = const Color(0xFF16A34A).withValues(alpha: 0.10)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(toPx(points.first), radiusPx, zonePaint);
+      final ringPaint = Paint()
+        ..color = const Color(0xFF16A34A).withValues(alpha: 0.55)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(toPx(points.first), radiusPx, ringPaint);
+    }
+
+    // Sommets : disque blanc bordé bleu, 1er sommet plus gros.
+    final fillPaint = Paint()..color = Colors.white;
+    final borderPaint = Paint()
+      ..color = const Color(0xFF2563EB)
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
+    for (var i = 0; i < points.length; i++) {
+      final p = toPx(points[i]);
+      final r = i == 0 ? 7.0 : 5.0;
+      canvas.drawCircle(p, r, fillPaint);
+      canvas.drawCircle(p, r, borderPaint);
+    }
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset a, Offset b, Paint paint) {
+    const dash = 6.0;
+    const gap = 4.0;
+    final total = (b - a).distance;
+    if (total < 1) {
+      canvas.drawLine(a, b, paint);
+      return;
+    }
+    final dx = (b.dx - a.dx) / total;
+    final dy = (b.dy - a.dy) / total;
+    double pos = 0;
+    while (pos < total) {
+      final start = Offset(a.dx + dx * pos, a.dy + dy * pos);
+      final end = Offset(
+        a.dx + dx * math.min(pos + dash, total),
+        a.dy + dy * math.min(pos + dash, total),
+      );
+      canvas.drawLine(start, end, paint);
+      pos += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _FreeDrawPreviewPainter old) =>
+      old.points != points ||
+      old.hover != hover ||
+      old.willClose != willClose;
+}
+
 /// Peint un polygone (vertices en coords locales) avec :
 /// - un remplissage [fill]
 /// - des arêtes en [borderColor] de [borderWidth] (sauf indices dans
@@ -4865,6 +5310,133 @@ class _DoorHandle extends StatelessWidget {
         boxShadow: const [
           BoxShadow(color: Colors.black26, blurRadius: 2),
         ],
+      ),
+    );
+  }
+}
+
+/// Bannière de contrôle affichée en haut du canvas pendant le mode
+/// « Tracer une pièce » : compteur de sommets, raccourci angles droits,
+/// retour arrière, annulation, et bouton « Terminer » qui clôt le polygone.
+class _FreeDrawBanner extends StatelessWidget {
+  final int pointCount;
+  final bool orthoLock;
+  final VoidCallback onToggleOrtho;
+  final VoidCallback onUndoPoint;
+  final VoidCallback onCancel;
+  final VoidCallback? onFinish;
+
+  const _FreeDrawBanner({
+    required this.pointCount,
+    required this.orthoLock,
+    required this.onToggleOrtho,
+    required this.onUndoPoint,
+    required this.onCancel,
+    required this.onFinish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canFinish = onFinish != null;
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xFF1E293B),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.edit_outlined, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                pointCount == 0
+                    ? 'Tape sur le plan pour poser le premier sommet.'
+                    : pointCount < 3
+                        ? 'Sommet $pointCount · pose au moins 3 sommets.'
+                        : 'Sommets : $pointCount · tape près du 1ᵉʳ pour fermer.',
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            _BannerIconButton(
+              icon: Icons.square_foot,
+              tooltip: orthoLock
+                  ? 'Angles libres'
+                  : 'Forcer angles à 45°',
+              active: orthoLock,
+              onTap: onToggleOrtho,
+            ),
+            const SizedBox(width: 4),
+            _BannerIconButton(
+              icon: Icons.undo,
+              tooltip: 'Retirer dernier sommet',
+              onTap: pointCount > 0 ? onUndoPoint : null,
+            ),
+            const SizedBox(width: 4),
+            _BannerIconButton(
+              icon: Icons.close,
+              tooltip: 'Annuler',
+              onTap: onCancel,
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: canFinish ? onFinish : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF16A34A),
+                disabledBackgroundColor: Colors.white24,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Terminer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BannerIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool active;
+  final VoidCallback? onTap;
+
+  const _BannerIconButton({
+    required this.icon,
+    required this.tooltip,
+    this.active = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: active ? Colors.white.withValues(alpha: 0.18) : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: disabled
+                ? Colors.white38
+                : (active ? Colors.amberAccent : Colors.white),
+          ),
+        ),
       ),
     );
   }
