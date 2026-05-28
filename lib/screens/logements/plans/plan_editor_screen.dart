@@ -5347,8 +5347,8 @@ List<Offset>? _segmentOverlapZone(
   Offset b,
   Offset c,
   Offset d, {
-  double perpTolerance = 0.012,
-  double minOverlap = 0.008,
+  double perpTolerance = 0.025,
+  double minOverlap = 0.005,
 }) {
   final abDx = b.dx - a.dx;
   final abDy = b.dy - a.dy;
@@ -5367,7 +5367,7 @@ List<Offset>? _segmentOverlapZone(
 
   // Parallélisme : produit vectoriel des unitaires (sin de l'angle).
   final cross = (ux * vy - uy * vx).abs();
-  if (cross > 0.09) return null; // ~5°
+  if (cross > 0.18) return null; // ~10°
 
   // Distance perpendiculaire entre les 2 lignes : projeter (c - a) sur
   // la normale unitaire à AB (-uy, ux).
@@ -5395,16 +5395,26 @@ void _paintOverlapHighlights({
   required Offset b,
   required List<List<Offset>> existingEdges,
 }) {
+  // Halo doré derrière (glow) pour visibilité maximale, puis ligne épaisse
+  // orange par-dessus. Le résultat est très visible même sur fond clair.
+  final glow = Paint()
+    ..color = const Color(0xFFFDE68A).withValues(alpha: 0.85)
+    ..strokeWidth = 14
+    ..strokeCap = StrokeCap.round
+    ..style = PaintingStyle.stroke;
   final paint = Paint()
-    ..color = const Color(0xFFEA580C) // orange vif
-    ..strokeWidth = 5
+    ..color = const Color(0xFFEA580C)
+    ..strokeWidth = 7
     ..strokeCap = StrokeCap.round
     ..style = PaintingStyle.stroke;
   Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
   for (final e in existingEdges) {
     final overlap = _segmentOverlapZone(a, b, e[0], e[1]);
     if (overlap != null) {
-      canvas.drawLine(toPx(overlap[0]), toPx(overlap[1]), paint);
+      final s = toPx(overlap[0]);
+      final t = toPx(overlap[1]);
+      canvas.drawLine(s, t, glow);
+      canvas.drawLine(s, t, paint);
     }
   }
 }
