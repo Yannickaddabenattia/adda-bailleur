@@ -28,6 +28,10 @@ class WallPhotosScreen extends StatelessWidget {
   /// Si fourni, n'affiche que les photos rattachées à cet EDL.
   final String? etatId;
 
+  /// Si fourni, ne montre que les photos d'un mur libre spécifique.
+  /// Prend la priorité sur le filtrage `roomId/side`.
+  final String? freeWallId;
+
   const WallPhotosScreen({
     super.key,
     required this.planId,
@@ -37,6 +41,7 @@ class WallPhotosScreen extends StatelessWidget {
     this.edgeIndex,
     this.canDelete = true,
     this.etatId,
+    this.freeWallId,
   });
 
   @override
@@ -44,12 +49,14 @@ class WallPhotosScreen extends StatelessWidget {
     final svc = context.watch<PlanLogementService>();
     final plan = svc.byId(planId);
     final photos = (plan?.wallPhotos ?? <WallPhoto>[])
-        .where((p) =>
-            p.roomId == roomId &&
-            (edgeIndex != null
-                ? p.edgeIndex == edgeIndex
-                : p.side == side) &&
-            (etatId == null || p.etatId == etatId))
+        .where((p) {
+          if (etatId != null && p.etatId != etatId) return false;
+          if (freeWallId != null) return p.freeWallId == freeWallId;
+          return p.roomId == roomId &&
+              (edgeIndex != null
+                  ? p.edgeIndex == edgeIndex
+                  : p.side == side);
+        })
         .toList()
       ..sort((a, b) => a.takenAt.compareTo(b.takenAt));
 

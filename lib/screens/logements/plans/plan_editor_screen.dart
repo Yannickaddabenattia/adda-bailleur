@@ -2122,6 +2122,10 @@ class _DrawerViewState extends State<_DrawerView> {
                                 ),
                               ),
                             ),
+                            // Zones de hit transparentes sur chaque mur libre :
+                            // permettent de saisir le mur n'importe où sur sa
+                            // longueur (tap = sélection, drag = translation).
+                            ..._buildFreeWallHitZones(size),
                             // Poignées du mur sélectionné (drag).
                             if (_selectedWall() != null)
                               ..._buildSelectedWallHandles(
@@ -4161,6 +4165,195 @@ class _DrawerViewState extends State<_DrawerView> {
   /// mur libre est sélectionné : extrémité 1, extrémité 2, et "poignée corps"
   /// au milieu pour la translation. Chaque poignée est un GestureDetector
   /// avec pan handlers.
+  /// Menu déclenché par long-press sur un mur libre : permet de prendre
+  /// ou consulter les photos rattachées à ce mur (utile dans le contexte
+  /// EDL pour documenter visuellement une cloison ajoutée).
+  Future<void> _onFreeWallLongPress(FreeWall w) async {
+    final photos = _photosForFreeWall(w.id);
+    final ro = widget.readOnly;
+    final canCapture = !ro || widget.allowWallPhotoCapture;
+    if (!canCapture && photos.isEmpty) return;
+    final label = widget.plan.labelForWall(w);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+            ),
+            const Divider(height: 1),
+            if (canCapture)
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Prendre une photo'),
+                onTap: () => Navigator.of(ctx).pop('camera'),
+              ),
+            if (canCapture)
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choisir dans la galerie'),
+                onTap: () => Navigator.of(ctx).pop('gallery'),
+              ),
+            if (photos.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.collections_outlined),
+                title: Text('Voir les photos (${photos.length})'),
+                onTap: () => Navigator.of(ctx).pop('view'),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text('Annuler'),
+              onTap: () => Navigator.of(ctx).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'camera') {
+      await _captureFreeWallPhoto(w, ImageSource.camera);
+    } else if (action == 'gallery') {
+      await _captureFreeWallPhoto(w, ImageSource.gallery);
+    } else if (action == 'view') {
+      await _showFreeWallPhotos(w);
+    }
+  }
+
+  List<WallPhoto> _photosForFreeWall(String wallId) {
+    return widget.plan.wallPhotos
+        .where((p) =>
+            p.freeWallId == wallId &&
+            (widget.etatId == null || p.etatId == widget.etatId))
+        .toList();
+  }
+
+  Future<void> _captureFreeWallPhoto(FreeWall w, ImageSource src) async {
+    final picker = ImagePicker();
+    final x = await picker.pickImage(source: src, imageQuality: 85);
+    if (x == null) return;
+    if (!mounted) return;
+    final svc = context.read<PlanLogementService>();
+    final photoId = const Uuid().v4();
+    final ext = x.path.contains('.')
+        ? x.path.substring(x.path.lastIndexOf('.') + 1).toLowerCase()
+        : 'jpg';
+    final destPath = await svc.persistWallPhoto(
+      source: File(x.path),
+      planId: widget.plan.id,
+      photoId: photoId,
+      extension: ext,
+    );
+    final takenAt = DateTime.now().toUtc();
+    final label = widget.plan.labelForWall(w);
+    try {
+      await PhotoWatermark.stampInPlace(
+        File(destPath),
+        at: takenAt,
+        label: label,
+      );
+    } catch (_) {
+      // Photo brute en cas d'échec watermark.
+    }
+    final photo = WallPhoto(
+      id: photoId,
+      roomId: '',
+      side: 'free',
+      wallNumber: 0,
+      roomName: label,
+      path: destPath,
+      takenAt: takenAt,
+      etatId: widget.etatId,
+      freeWallId: w.id,
+    );
+    setState(() => widget.plan.wallPhotos.add(photo));
+    widget.onChanged();
+  }
+
+  Future<void> _showFreeWallPhotos(FreeWall w) async {
+    final label = widget.plan.labelForWall(w);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WallPhotosScreen(
+          planId: widget.plan.id,
+          roomId: '',
+          side: 'free',
+          title: label,
+          canDelete: !widget.readOnly,
+          etatId: widget.etatId,
+          freeWallId: w.id,
+        ),
+      ),
+    );
+  }
+
+  /// Zones de hit transparentes pour chaque mur libre, pour permettre
+  /// la sélection au tap et la translation au drag depuis n'importe quel
+  /// point du mur. Si la pièce est en mode dessin, on n'ajoute rien (les
+  /// taps doivent aller au handler du mode).
+  List<Widget> _buildFreeWallHitZones(Size canvas) {
+    if (widget.readOnly || _isInDrawingMode) return const [];
+    Offset toPx(double nx, double ny) =>
+        Offset(nx * canvas.width, ny * canvas.height);
+    final widgets = <Widget>[];
+    for (final w in widget.plan.freeWalls) {
+      final a = toPx(w.x1, w.y1);
+      final b = toPx(w.x2, w.y2);
+      const pad = 14.0;
+      final left = math.min(a.dx, b.dx) - pad;
+      final top = math.min(a.dy, b.dy) - pad;
+      final width = (a.dx - b.dx).abs() + pad * 2;
+      final height = (a.dy - b.dy).abs() + pad * 2;
+      widgets.add(Positioned(
+        left: left,
+        top: top,
+        width: width,
+        height: height,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            widget.onSelectWall(w.id);
+            widget.onSelect(null);
+          },
+          onLongPress: () => _onFreeWallLongPress(w),
+          onPanStart: (d) {
+            // Vérifie qu'on est bien sur la ligne du mur (et pas dans la
+            // bbox loin de la ligne, possible pour un mur diagonal).
+            final localNorm = Offset(
+              (d.localPosition.dx + left) / canvas.width,
+              (d.localPosition.dy + top) / canvas.height,
+            );
+            final dist = _pointToSegmentDistance(
+                localNorm, Offset(w.x1, w.y1), Offset(w.x2, w.y2));
+            if (dist > 0.025) return;
+            widget.onSelectWall(w.id);
+            widget.onSelect(null);
+            _startWallDrag(_WallDragMode.body, d.globalPosition);
+          },
+          onPanUpdate: (d) {
+            if (_wallDragMode == _WallDragMode.body) {
+              _updateWallDrag(d.globalPosition, canvas);
+            }
+          },
+          onPanEnd: (_) {
+            if (_wallDragMode == _WallDragMode.body) _endWallDrag();
+          },
+        ),
+      ));
+    }
+    return widgets;
+  }
+
   List<Widget> _buildSelectedWallHandles(FreeWall w, Size size) {
     if (widget.readOnly) return const [];
     Offset toPx(double nx, double ny) =>

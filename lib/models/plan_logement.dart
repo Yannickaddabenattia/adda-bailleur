@@ -247,6 +247,11 @@ class WallPhoto {
   /// dans une section dédiée du plan et du PDF.
   bool isExterior;
 
+  /// Identifiant du mur libre (FreeWall) auquel cette photo est rattachée.
+  /// `null` = photo classique attachée à un mur de pièce. Quand non null,
+  /// `roomId` peut être vide et `side`/`wallNumber` sont indicatifs.
+  String? freeWallId;
+
   WallPhoto({
     required this.id,
     required this.roomId,
@@ -258,6 +263,7 @@ class WallPhoto {
     this.etatId,
     this.edgeIndex,
     this.isExterior = false,
+    this.freeWallId,
   });
 
   factory WallPhoto.create({
@@ -269,6 +275,7 @@ class WallPhoto {
     String? etatId,
     int? edgeIndex,
     bool isExterior = false,
+    String? freeWallId,
   }) {
     return WallPhoto(
       id: const Uuid().v4(),
@@ -281,10 +288,13 @@ class WallPhoto {
       etatId: etatId,
       edgeIndex: edgeIndex,
       isExterior: isExterior,
+      freeWallId: freeWallId,
     );
   }
 
   String get label => isExterior ? roomName : 'M$wallNumber';
+  bool get isOnFreeWall =>
+      freeWallId != null && freeWallId!.isNotEmpty;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -297,6 +307,7 @@ class WallPhoto {
         if (etatId != null) 'etatId': etatId,
         if (edgeIndex != null) 'edgeIndex': edgeIndex,
         if (isExterior) 'isExterior': true,
+        if (freeWallId != null) 'freeWallId': freeWallId,
       };
 
   factory WallPhoto.fromMap(Map<String, dynamic> m) => WallPhoto(
@@ -310,6 +321,7 @@ class WallPhoto {
         takenAt: DateTime.parse(m['takenAt'] as String),
         etatId: m['etatId'] as String?,
         edgeIndex: (m['edgeIndex'] as num?)?.toInt(),
+        freeWallId: m['freeWallId'] as String?,
       );
 }
 
@@ -877,13 +889,15 @@ class WallPhotoAdapter extends TypeAdapter<WallPhoto> {
       etatId: f.containsKey(7) ? f[7] as String? : null,
       edgeIndex: f.containsKey(8) ? f[8] as int? : null,
       isExterior: f.containsKey(9) ? (f[9] as bool? ?? false) : false,
+      freeWallId: f.containsKey(10) ? f[10] as String? : null,
     );
   }
 
   @override
   void write(BinaryWriter writer, WallPhoto obj) {
+    final hasFreeWall = obj.freeWallId != null;
     writer
-      ..writeByte(10)
+      ..writeByte(hasFreeWall ? 11 : 10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -904,6 +918,11 @@ class WallPhotoAdapter extends TypeAdapter<WallPhoto> {
       ..write(obj.edgeIndex)
       ..writeByte(9)
       ..write(obj.isExterior);
+    if (hasFreeWall) {
+      writer
+        ..writeByte(10)
+        ..write(obj.freeWallId);
+    }
   }
 }
 
