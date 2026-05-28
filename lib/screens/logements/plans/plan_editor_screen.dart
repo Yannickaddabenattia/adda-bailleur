@@ -464,6 +464,19 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     if (state == null) return;
                     state.startDrawWall(virtual: true);
                   },
+                  onAlignRooms: () {
+                    final state = _drawerKey.currentState;
+                    if (state == null) return;
+                    final n = state.alignAdjacentRooms();
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(n == 0
+                            ? 'Aucun coin à réaligner.'
+                            : '$n coin(s) réaligné(s).'),
+                      ),
+                    );
+                  },
                   selectedWall: _findSelectedWall(plan),
                   onRenameWall: () {
                     final state = _drawerKey.currentState;
@@ -952,6 +965,7 @@ class _PlanSidebar extends StatelessWidget {
   final VoidCallback onAddFormeLibre;
   final VoidCallback onStartCalibrate;
   final VoidCallback onClearCalibrate;
+  final VoidCallback onAlignRooms;
   final VoidCallback onStartDrawWall;
   final VoidCallback onStartDrawVirtualWall;
   final VoidCallback onRenameWall;
@@ -972,6 +986,7 @@ class _PlanSidebar extends StatelessWidget {
     required this.onAddFormeLibre,
     required this.onStartCalibrate,
     required this.onClearCalibrate,
+    required this.onAlignRooms,
     required this.onStartDrawWall,
     required this.onStartDrawVirtualWall,
     required this.onRenameWall,
@@ -1039,6 +1054,11 @@ class _PlanSidebar extends StatelessWidget {
             _DashedAddButton(
               label: '┄ Tracer un mur virtuel',
               onTap: onStartDrawVirtualWall,
+            ),
+            const SizedBox(height: 8),
+            _DashedAddButton(
+              label: '🧲 Aligner les pièces',
+              onTap: onAlignRooms,
             ),
             const SizedBox(height: 22),
           ],
@@ -2480,6 +2500,106 @@ class _DrawerViewState extends State<_DrawerView> {
       }
     }
     return (top: top, right: right, bottom: bottom, left: left);
+  }
+
+  /// Réaligne les coins proches de toutes les pièces pour éliminer les
+  /// micro-espaces blancs entre cloisons mitoyennes. Pour chaque coin de
+  /// chaque pièce, cherche un coin d'une autre pièce dans un rayon de
+  /// 2.5% du canvas et le snappe exactement dessus.
+  /// Retourne le nombre de coins réalignés.
+  int alignAdjacentRooms() {
+    const tol = 0.025;
+    int changed = 0;
+    // Récupère tous les coins de toutes les pièces.
+    final allCorners = <(RoomShape, int, Offset)>[];
+    for (final r in widget.plan.rooms) {
+      final cs = _roomCorners(r);
+      for (var i = 0; i < cs.length; i++) {
+        allCorners.add((r, i, cs[i]));
+      }
+    }
+    // Pour chaque coin, cherche un coin d'une autre pièce d'id plus petit
+    // et y snap exactement (ancre stable).
+    for (final entry in allCorners) {
+      final r = entry.$1;
+      final idx = entry.$2;
+      final c = entry.$3;
+      Offset? target;
+      double bestDist = tol;
+      for (final other in allCorners) {
+        if (other.$1.id == r.id) continue;
+        if (other.$1.id.compareTo(r.id) >= 0) continue;
+        final d = (c - other.$3).distance;
+        if (d < bestDist && d > 1e-9) {
+          bestDist = d;
+          target = other.$3;
+        }
+      }
+      if (target != null) {
+        _setRoomCorner(r, idx, target);
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      // Recompute bboxes
+      for (final r in widget.plan.rooms) {
+        if (r.isPolygon && r.vertices != null) {
+          final v = r.vertices!;
+          double mnX = v[0], mxX = v[0], mnY = v[1], mxY = v[1];
+          for (var i = 0; i < v.length; i += 2) {
+            if (v[i] < mnX) mnX = v[i];
+            if (v[i] > mxX) mxX = v[i];
+            if (v[i + 1] < mnY) mnY = v[i + 1];
+            if (v[i + 1] > mxY) mxY = v[i + 1];
+          }
+          r.x = mnX;
+          r.y = mnY;
+          r.width = mxX - mnX;
+          r.height = mxY - mnY;
+        }
+      }
+      setState(() {});
+      widget.onChanged();
+    }
+    return changed;
+  }
+
+  /// Snappe le coin `idx` de la pièce `r` à la position `target`. Pour un
+  /// rectangle on essaie de garder la nature axis-aligned (si possible).
+  void _setRoomCorner(RoomShape r, int idx, Offset target) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = List<double>.from(r.vertices!);
+      v[idx * 2] = target.dx;
+      v[idx * 2 + 1] = target.dy;
+      r.vertices = v;
+      return;
+    }
+    // Pour un rectangle (idx 0..3 = TL, TR, BR, BL), on convertit en
+    // polygone si le snap ferait perdre l'alignement axes. Sinon on
+    // ajuste seulement x/y/width/height pour rester axis-aligned.
+    final corners = [
+      Offset(r.x, r.y),
+      Offset(r.x + r.width, r.y),
+      Offset(r.x + r.width, r.y + r.height),
+      Offset(r.x, r.y + r.height),
+    ];
+    corners[idx] = target;
+    // Si encore axis-aligned (TL.y == TR.y, BL.y == BR.y, TL.x == BL.x,
+    // TR.x == BR.x), on garde rectangle ; sinon on convertit en polygone.
+    final aligned = (corners[0].dy == corners[1].dy &&
+        corners[2].dy == corners[3].dy &&
+        corners[0].dx == corners[3].dx &&
+        corners[1].dx == corners[2].dx);
+    if (aligned) {
+      r.x = corners[0].dx;
+      r.y = corners[0].dy;
+      r.width = corners[1].dx - corners[0].dx;
+      r.height = corners[2].dy - corners[1].dy;
+    } else {
+      r.vertices = [
+        for (final c in corners) ...[c.dx, c.dy],
+      ];
+    }
   }
 
   /// `true` si l'arête `index` du polygone `r` est partagée (coïncide) avec
