@@ -4098,7 +4098,7 @@ class _DrawerViewState extends State<_DrawerView> {
   /// de `newWall`. Si oui, crée une pièce polygonale dont les sommets
   /// suivent le cycle, et supprime les murs consommés.
   bool _maybeFormRoomFromWalls(FreeWall newWall) {
-    const tol = 0.012;
+    const tol = 0.022; // ≥ snap radius pour matcher les extrémités snapped
     bool eq(double a, double b, double c, double d) =>
         math.sqrt((a - c) * (a - c) + (b - d) * (b - d)) < tol;
 
@@ -4865,13 +4865,14 @@ class _DrawerViewState extends State<_DrawerView> {
   }
 
   /// Cherche un point d'accrochage parmi les sommets puis les arêtes des
-  /// pièces existantes. Retourne le point d'accrochage si trouvé, sinon `p`.
+  /// pièces existantes ET les extrémités/segments des murs libres.
+  /// Retourne le point d'accrochage si trouvé, sinon `p`.
   Offset _snapToExistingGeometry(Offset p) {
     Offset best = p;
     double bestDist = _freeDrawSnapRadius;
 
+    // 1) Sommets de pièces (priorité maximale).
     for (final r in widget.plan.rooms) {
-      // Sommets de la pièce (polygone ou rectangle).
       final corners = _roomCorners(r);
       for (final c in corners) {
         final d = (p - c).distance;
@@ -4881,9 +4882,22 @@ class _DrawerViewState extends State<_DrawerView> {
         }
       }
     }
+    // 2) Extrémités des murs libres — essentielles pour fermer un cycle
+    //    de murs : sans ce snap, un nouveau mur ne s'accroche pas
+    //    exactement à un coin déjà tracé et la détection de cycle échoue.
+    for (final w in widget.plan.freeWalls) {
+      for (final c in [Offset(w.x1, w.y1), Offset(w.x2, w.y2)]) {
+        final d = (p - c).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = c;
+        }
+      }
+    }
     if (best != p) return best;
 
-    // Aucun sommet proche : on tente le snap sur les arêtes (projection).
+    // 3) Aucun sommet/extrémité proche : tente le snap sur les arêtes
+    //    des pièces et sur les murs libres (projection sur segment).
     bestDist = _freeDrawSnapRadius;
     for (final r in widget.plan.rooms) {
       final edges = _roomEdges(r);
@@ -4895,6 +4909,16 @@ class _DrawerViewState extends State<_DrawerView> {
           bestDist = d;
           best = proj;
         }
+      }
+    }
+    for (final w in widget.plan.freeWalls) {
+      final proj = _projectOnSegment(
+          p, Offset(w.x1, w.y1), Offset(w.x2, w.y2));
+      if (proj == null) continue;
+      final d = (p - proj).distance;
+      if (d < bestDist) {
+        bestDist = d;
+        best = proj;
       }
     }
     return best;
