@@ -4853,6 +4853,7 @@ class _DrawerViewState extends State<_DrawerView> {
             }
             r.vertices = out;
             r.recomputeBounds();
+            _applyPolygonMoveSnap(r);
           } else {
             r.x = (snap.x + dx).clamp(0.0, 1.0 - snap.width);
             r.y = (snap.y + dy).clamp(0.0, 1.0 - snap.height);
@@ -4904,6 +4905,107 @@ class _DrawerViewState extends State<_DrawerView> {
           break;
       }
     });
+  }
+
+  /// Pour une pièce polygonale en cours de déplacement : si l'une de ses
+  /// arêtes est presque parallèle et proche d'une arête d'une autre pièce
+  /// (rect ou polygone) ou d'un mur libre, applique un offset perpendiculaire
+  /// pour les faire coïncider exactement. Le snap le plus court (parmi tous
+  /// les couples d'arêtes candidats) est appliqué à tout le polygone.
+  void _applyPolygonMoveSnap(RoomShape r) {
+    if (!r.isPolygon || r.vertices == null) return;
+    final v = r.vertices!;
+    final n = v.length ~/ 2;
+    if (n < 3) return;
+
+    final myEdges = <List<Offset>>[];
+    for (var i = 0; i < n; i++) {
+      final j = (i + 1) % n;
+      myEdges.add([
+        Offset(v[i * 2], v[i * 2 + 1]),
+        Offset(v[j * 2], v[j * 2 + 1]),
+      ]);
+    }
+
+    final targets = <List<Offset>>[];
+    for (final o in widget.plan.rooms) {
+      if (o.id == r.id) continue;
+      if (o.isPolygon && o.vertices != null) {
+        final ov = o.vertices!;
+        final on = ov.length ~/ 2;
+        for (var i = 0; i < on; i++) {
+          final j = (i + 1) % on;
+          targets.add([
+            Offset(ov[i * 2], ov[i * 2 + 1]),
+            Offset(ov[j * 2], ov[j * 2 + 1]),
+          ]);
+        }
+      } else {
+        final l = o.x, rr = o.x + o.width, tt = o.y, bb = o.y + o.height;
+        targets.add([Offset(l, tt), Offset(rr, tt)]);
+        targets.add([Offset(rr, tt), Offset(rr, bb)]);
+        targets.add([Offset(rr, bb), Offset(l, bb)]);
+        targets.add([Offset(l, bb), Offset(l, tt)]);
+      }
+    }
+    for (final w in widget.plan.freeWalls) {
+      targets.add([Offset(w.x1, w.y1), Offset(w.x2, w.y2)]);
+    }
+
+    double bestDx = 0, bestDy = 0;
+    double bestPerp = _snapThreshold;
+
+    for (final me in myEdges) {
+      for (final t in targets) {
+        final snap = _edgePerpSnap(me[0], me[1], t[0], t[1]);
+        if (snap != null && snap[2].abs() < bestPerp) {
+          bestPerp = snap[2].abs();
+          bestDx = snap[0];
+          bestDy = snap[1];
+        }
+      }
+    }
+    if (bestPerp >= _snapThreshold) return;
+
+    final out = <double>[];
+    for (var i = 0; i < v.length; i += 2) {
+      out.add((v[i] + bestDx).clamp(0.0, 1.0));
+      out.add((v[i + 1] + bestDy).clamp(0.0, 1.0));
+    }
+    r.vertices = out;
+    r.recomputeBounds();
+  }
+
+  /// Si AB et CD sont presque parallèles avec recouvrement de leurs
+  /// projections, retourne [dx, dy, perpDistance] où (dx, dy) est l'offset
+  /// à appliquer à AB pour le faire coïncider avec la ligne de CD.
+  List<double>? _edgePerpSnap(Offset a, Offset b, Offset c, Offset d) {
+    final abDx = b.dx - a.dx;
+    final abDy = b.dy - a.dy;
+    final lenAB = math.sqrt(abDx * abDx + abDy * abDy);
+    if (lenAB < 1e-6) return null;
+    final cdDx = d.dx - c.dx;
+    final cdDy = d.dy - c.dy;
+    final lenCD = math.sqrt(cdDx * cdDx + cdDy * cdDy);
+    if (lenCD < 1e-6) return null;
+    final ux = abDx / lenAB, uy = abDy / lenAB;
+    final vx = cdDx / lenCD, vy = cdDy / lenCD;
+    final cross = (ux * vy - uy * vx).abs();
+    if (cross > 0.09) return null; // > ~5°, pas parallèle
+
+    // Recouvrement minimal des projections (sinon les arêtes ne se voient
+    // pas comme adjacentes, juste comme alignées au loin).
+    final tC = ((c.dx - a.dx) * ux + (c.dy - a.dy) * uy) / lenAB;
+    final tD = ((d.dx - a.dx) * ux + (d.dy - a.dy) * uy) / lenAB;
+    final tMin = math.min(tC, tD);
+    final tMax = math.max(tC, tD);
+    if (tMax < -0.05 || tMin > 1.05) return null;
+
+    // Distance perpendiculaire signée de A à la ligne de CD.
+    final perp = (c.dx - a.dx) * (-uy) + (c.dy - a.dy) * ux;
+    final dx = perp * (-uy);
+    final dy = perp * ux;
+    return [dx, dy, perp];
   }
 
   /// Pour un déplacement : décale la pièce de quelques pourcents pour que
