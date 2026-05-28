@@ -2427,10 +2427,11 @@ class _DrawerViewState extends State<_DrawerView> {
     if (r.isPolygon) {
       return (top: false, right: false, bottom: false, left: false);
     }
-    const eps = 0.003;
+    const eps = 0.005;
     bool top = false, right = false, bottom = false, left = false;
     final rR = r.x + r.width;
     final rB = r.y + r.height;
+    // 1) Pièces rectangle de même nom (logique historique de fusion).
     for (final o in widget.plan.rooms) {
       if (o.id == r.id) continue;
       if (o.isPolygon) continue;
@@ -2446,7 +2447,90 @@ class _DrawerViewState extends State<_DrawerView> {
       if ((rB - o.y).abs() < eps && vOverlap > eps) bottom = true;
       if ((oB - r.y).abs() < eps && vOverlap > eps) top = true;
     }
+    // 2) Mitoyenneté générique : si un côté du rectangle est partagé avec
+    //    une autre pièce (de n'importe quel nom, rectangle ou polygone),
+    //    on hide ce côté uniquement si l'autre pièce a un id plus petit
+    //    (déduplication stable : c'est l'autre qui dessine).
+    final corners = [
+      [Offset(r.x, r.y), Offset(rR, r.y), 'top'],
+      [Offset(rR, r.y), Offset(rR, rB), 'right'],
+      [Offset(rR, rB), Offset(r.x, rB), 'bottom'],
+      [Offset(r.x, rB), Offset(r.x, r.y), 'left'],
+    ];
+    for (final corner in corners) {
+      final a = corner[0] as Offset;
+      final b = corner[1] as Offset;
+      final side = corner[2] as String;
+      // On a déjà détecté la mitoyenneté pour les pièces de même nom
+      // ci-dessus — ne pas écraser si déjà true.
+      if (side == 'top' && top) continue;
+      if (side == 'right' && right) continue;
+      if (side == 'bottom' && bottom) continue;
+      if (side == 'left' && left) continue;
+      for (final o in widget.plan.rooms) {
+        if (o.id == r.id) continue;
+        if (o.id.compareTo(r.id) >= 0) continue; // on ne hide que si l'autre a un id plus petit
+        if (_hasMatchingEdge(o, a, b)) {
+          if (side == 'top') top = true;
+          if (side == 'right') right = true;
+          if (side == 'bottom') bottom = true;
+          if (side == 'left') left = true;
+          break;
+        }
+      }
+    }
     return (top: top, right: right, bottom: bottom, left: left);
+  }
+
+  /// `true` si l'arête `index` du polygone `r` est partagée (coïncide) avec
+  /// une arête d'une autre pièce qui a un id plus petit (par ordre lexico).
+  /// Dans ce cas, la pièce r n'a pas à dessiner cette arête : la pièce
+  /// "propriétaire" (id plus petit) la dessine déjà.
+  bool _isSharedEdgeOwnedElsewhere(RoomShape r, int index) {
+    if (!r.isPolygon || r.vertices == null) return false;
+    final v = r.vertices!;
+    final n = v.length ~/ 2;
+    if (n < 3) return false;
+    final i = ((index % n) + n) % n;
+    final j = (i + 1) % n;
+    final a = Offset(v[i * 2], v[i * 2 + 1]);
+    final b = Offset(v[j * 2], v[j * 2 + 1]);
+    for (final o in widget.plan.rooms) {
+      if (o.id == r.id) continue;
+      if (o.id.compareTo(r.id) >= 0) continue;
+      if (_hasMatchingEdge(o, a, b)) return true;
+    }
+    return false;
+  }
+
+  /// `true` si la pièce `o` a une arête qui coïncide (mêmes endpoints à
+  /// epsilon près, dans un sens ou l'autre) avec le segment AB.
+  bool _hasMatchingEdge(RoomShape o, Offset a, Offset b) {
+    const eps = 0.005;
+    bool eq(Offset p, Offset q) =>
+        (p.dx - q.dx).abs() < eps && (p.dy - q.dy).abs() < eps;
+    bool match(Offset c, Offset d) =>
+        (eq(a, c) && eq(b, d)) || (eq(a, d) && eq(b, c));
+    if (o.isPolygon && o.vertices != null) {
+      final v = o.vertices!;
+      final n = v.length ~/ 2;
+      for (var i = 0; i < n; i++) {
+        final j = (i + 1) % n;
+        if (match(Offset(v[i * 2], v[i * 2 + 1]),
+            Offset(v[j * 2], v[j * 2 + 1]))) {
+          return true;
+        }
+      }
+      return false;
+    }
+    final c1 = Offset(o.x, o.y);
+    final c2 = Offset(o.x + o.width, o.y);
+    final c3 = Offset(o.x + o.width, o.y + o.height);
+    final c4 = Offset(o.x, o.y + o.height);
+    return match(c1, c2) ||
+        match(c2, c3) ||
+        match(c3, c4) ||
+        match(c4, c1);
   }
 
   /// L'ancre du groupe = pièce avec l'id le plus petit (ordre stable).
@@ -3130,7 +3214,8 @@ class _DrawerViewState extends State<_DrawerView> {
                 borderWidth: borderWidth,
                 hiddenEdges: {
                   for (var i = 0; i < n; i++)
-                    if (wallHidden(i)) i,
+                    if (wallHidden(i) || _isSharedEdgeOwnedElsewhere(r, i))
+                      i,
                 },
               ),
             ),
