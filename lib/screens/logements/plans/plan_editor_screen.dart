@@ -3982,8 +3982,213 @@ class _DrawerViewState extends State<_DrawerView> {
       _drawWallMode = false;
       _drawWallPoint1 = null;
     });
-    widget.onSelectWall(wall.id);
+
+    // Si le mur est virtuel et coupe une pièce existante en 2, on scinde
+    // automatiquement la pièce en 2 polygones reliés par le mur.
+    // Si le mur est solide et ferme un cycle avec d'autres murs solides,
+    // on crée automatiquement une pièce à partir de ce cycle.
+    String? notice;
+    bool consumeWall = false;
+    if (wall.isVirtual) {
+      if (_maybeSplitRoomWithWall(wall)) {
+        notice = 'Pièce coupée en 2 par le mur virtuel.';
+      }
+    } else {
+      if (_maybeFormRoomFromWalls(wall)) {
+        notice = 'Pièce créée à partir des murs fermés.';
+        consumeWall = true;
+      }
+    }
+
+    widget.onSelectWall(notice == null && !consumeWall ? wall.id : null);
     widget.onChanged();
+    if (notice != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(notice)),
+      );
+    }
+  }
+
+  /// Détecte si un cycle fermé existe parmi les murs solides en partant
+  /// de `newWall`. Si oui, crée une pièce polygonale dont les sommets
+  /// suivent le cycle, et supprime les murs consommés.
+  bool _maybeFormRoomFromWalls(FreeWall newWall) {
+    const tol = 0.012;
+    bool eq(double a, double b, double c, double d) =>
+        math.sqrt((a - c) * (a - c) + (b - d) * (b - d)) < tol;
+
+    final candidates = widget.plan.freeWalls
+        .where((w) => !w.isVirtual)
+        .toList();
+    if (candidates.length < 3) return false;
+
+    // DFS pour trouver un chemin de (newWall.x2, y2) vers (newWall.x1, y1)
+    // sans repasser par newWall.
+    final visited = <String>{newWall.id};
+    final path = <FreeWall>[];
+    bool dfs(double curX, double curY) {
+      if (eq(curX, curY, newWall.x1, newWall.y1) && path.isNotEmpty) {
+        return true;
+      }
+      for (final w in candidates) {
+        if (visited.contains(w.id)) continue;
+        final side1 = eq(w.x1, w.y1, curX, curY);
+        final side2 = eq(w.x2, w.y2, curX, curY);
+        if (!side1 && !side2) continue;
+        visited.add(w.id);
+        path.add(w);
+        final nextX = side1 ? w.x2 : w.x1;
+        final nextY = side1 ? w.y2 : w.y1;
+        if (dfs(nextX, nextY)) return true;
+        visited.remove(w.id);
+        path.removeLast();
+      }
+      return false;
+    }
+
+    if (!dfs(newWall.x2, newWall.y2)) return false;
+
+    // Construit la liste de sommets du cycle.
+    final verts = <double>[newWall.x2, newWall.y2];
+    double curX = newWall.x2, curY = newWall.y2;
+    for (final w in path) {
+      final side1 = eq(w.x1, w.y1, curX, curY);
+      final otherX = side1 ? w.x2 : w.x1;
+      final otherY = side1 ? w.y2 : w.y1;
+      if (!eq(otherX, otherY, newWall.x1, newWall.y1)) {
+        verts..add(otherX)..add(otherY);
+      }
+      curX = otherX;
+      curY = otherY;
+    }
+    if (verts.length < 6) return false;
+
+    setState(() {
+      final newColor = widget.plan.rooms.length % _colors.length;
+      final room = RoomShape.create(
+        name: 'Pièce',
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        colorIndex: newColor,
+      )..vertices = verts;
+      double mnX = verts[0], mxX = verts[0];
+      double mnY = verts[1], mxY = verts[1];
+      for (var i = 0; i < verts.length; i += 2) {
+        if (verts[i] < mnX) mnX = verts[i];
+        if (verts[i] > mxX) mxX = verts[i];
+        if (verts[i + 1] < mnY) mnY = verts[i + 1];
+        if (verts[i + 1] > mxY) mxY = verts[i + 1];
+      }
+      room.x = mnX;
+      room.y = mnY;
+      room.width = mxX - mnX;
+      room.height = mxY - mnY;
+      widget.plan.rooms.add(room);
+
+      // Consomme les murs du cycle (ils sont maintenant les arêtes de la
+      // nouvelle pièce, plus besoin de les garder comme murs libres).
+      widget.plan.freeWalls.remove(newWall);
+      for (final w in path) {
+        widget.plan.freeWalls.remove(w);
+      }
+    });
+    return true;
+  }
+
+  /// Si les 2 extrémités du mur tombent sur le périmètre d'une même pièce
+  /// (sur des arêtes différentes), scinde la pièce en 2 nouveaux polygones
+  /// reliés par le mur, et renvoie true. Sinon false (aucune action).
+  bool _maybeSplitRoomWithWall(FreeWall wall) {
+    for (final r in widget.plan.rooms) {
+      final corners = _roomCorners(r);
+      final n = corners.length;
+      if (n < 3) continue;
+
+      int? edgeA;
+      int? edgeB;
+      const tol = 0.012;
+      for (var i = 0; i < n; i++) {
+        final j = (i + 1) % n;
+        if (edgeA == null) {
+          final dA = _pointToSegmentDistance(
+              Offset(wall.x1, wall.y1), corners[i], corners[j]);
+          if (dA < tol) edgeA = i;
+        }
+        if (edgeB == null) {
+          final dB = _pointToSegmentDistance(
+              Offset(wall.x2, wall.y2), corners[i], corners[j]);
+          if (dB < tol) edgeB = i;
+        }
+      }
+      if (edgeA == null || edgeB == null || edgeA == edgeB) continue;
+
+      // Construit polygone 1 : wallStart → marche avant le long du
+      // périmètre jusqu'à wallEnd.
+      final v1 = <double>[wall.x1, wall.y1];
+      var idx = (edgeA + 1) % n;
+      while (true) {
+        v1..add(corners[idx].dx)..add(corners[idx].dy);
+        if (idx == edgeB) break;
+        idx = (idx + 1) % n;
+      }
+      v1..add(wall.x2)..add(wall.y2);
+
+      // Polygone 2 : wallStart → marche arrière le long du périmètre
+      // jusqu'à wallEnd.
+      final v2 = <double>[wall.x1, wall.y1];
+      idx = edgeA;
+      while (true) {
+        v2..add(corners[idx].dx)..add(corners[idx].dy);
+        if (idx == (edgeB + 1) % n) break;
+        idx = (idx - 1 + n) % n;
+      }
+      v2..add(wall.x2)..add(wall.y2);
+
+      // Validation minimale : chaque sous-polygone doit avoir ≥ 3 sommets
+      // distincts (donc au moins 6 valeurs dans le flat array).
+      if (v1.length < 6 || v2.length < 6) continue;
+
+      // Bbox helpers
+      void applyBbox(RoomShape s, List<double> verts) {
+        double mnX = verts[0], mxX = verts[0];
+        double mnY = verts[1], mxY = verts[1];
+        for (var i = 0; i < verts.length; i += 2) {
+          if (verts[i] < mnX) mnX = verts[i];
+          if (verts[i] > mxX) mxX = verts[i];
+          if (verts[i + 1] < mnY) mnY = verts[i + 1];
+          if (verts[i + 1] > mxY) mxY = verts[i + 1];
+        }
+        s.x = mnX;
+        s.y = mnY;
+        s.width = mxX - mnX;
+        s.height = mxY - mnY;
+      }
+
+      setState(() {
+        // La pièce d'origine reçoit le polygone 1 (garde son nom).
+        r.vertices = v1;
+        applyBbox(r, v1);
+
+        // Nouvelle pièce avec le polygone 2.
+        final newColor =
+            (widget.plan.rooms.length) % _colors.length;
+        final newRoom = RoomShape.create(
+          name: '${r.name} (2)',
+          x: 0,
+          y: 0,
+          width: 0.1,
+          height: 0.1,
+          colorIndex: newColor,
+        );
+        newRoom.vertices = v2;
+        applyBbox(newRoom, v2);
+        widget.plan.rooms.add(newRoom);
+      });
+      return true;
+    }
+    return false;
   }
 
   /// Cherche un mur libre dont la distance perpendiculaire à `p` est ≤ tolérance.
