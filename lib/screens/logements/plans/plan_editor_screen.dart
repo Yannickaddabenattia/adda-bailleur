@@ -4511,10 +4511,67 @@ class _DrawerViewState extends State<_DrawerView> {
       point = _applyOrthoLock(_freeDrawPoints.last, point);
     }
 
+    // 3) Si le dernier sommet posé ET le sommet courant correspondent tous
+    //    deux à des coins de la même pièce existante, on insère
+    //    automatiquement les coins intermédiaires du chemin le plus court
+    //    le long du périmètre. Permet de "récupérer" un mur de la pièce
+    //    adjacente sans avoir à cliquer chaque coin un par un.
+    final extraVertices = <Offset>[];
+    if (_freeDrawPoints.isNotEmpty) {
+      final last = _freeDrawPoints.last;
+      final intermediates = _intermediateCornersBetween(last, point);
+      if (intermediates.isNotEmpty) {
+        extraVertices.addAll(intermediates);
+      }
+    }
+
     setState(() {
+      for (final v in extraVertices) {
+        _freeDrawPoints.add(v);
+      }
       _freeDrawPoints.add(point);
       _freeDrawHover = point;
     });
+  }
+
+  /// Si `a` et `b` sont 2 coins distincts d'une même pièce existante,
+  /// retourne les coins intermédiaires (le long du périmètre, dans le
+  /// sens le plus court) à insérer entre eux. Si pas le cas, retourne
+  /// une liste vide.
+  List<Offset> _intermediateCornersBetween(Offset a, Offset b) {
+    for (final r in widget.plan.rooms) {
+      final corners = _roomCorners(r);
+      int? ai;
+      int? bi;
+      for (var i = 0; i < corners.length; i++) {
+        if ((corners[i] - a).distance < 1e-4) ai = i;
+        if ((corners[i] - b).distance < 1e-4) bi = i;
+      }
+      if (ai == null || bi == null || ai == bi) continue;
+      final n = corners.length;
+      // Si a et b sont adjacents (dist 1 dans un sens ou l'autre), pas
+      // d'intermédiaire à ajouter — c'est juste un mur direct.
+      final fwd = (bi - ai + n) % n;
+      final bwd = (ai - bi + n) % n;
+      if (fwd == 1 || bwd == 1) return const [];
+      // Sinon : on suit le chemin le plus court le long du périmètre.
+      final out = <Offset>[];
+      if (fwd <= bwd) {
+        var i = (ai + 1) % n;
+        while (i != bi) {
+          out.add(corners[i]);
+          i = (i + 1) % n;
+        }
+      } else {
+        var i = (ai - 1 + n) % n;
+        while (i != bi) {
+          out.add(corners[i]);
+          i = (i - 1 + n) % n;
+        }
+      }
+      return out;
+    }
+    return const [];
   }
 
   /// Cherche un point d'accrochage parmi les sommets puis les arêtes des
