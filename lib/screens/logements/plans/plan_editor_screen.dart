@@ -3226,7 +3226,7 @@ class _DrawerViewState extends State<_DrawerView> {
       },
       onPanUpdate: (d) => _onPanUpdate(r, d.globalPosition, canvas),
       onPanEnd: (_) => _onPanEnd(),
-      onLongPress: () => _confirmRemoveVertex(r, index),
+      onLongPress: () => _showVertexMenu(r, index),
       child: Container(
         width: 22,
         height: 22,
@@ -3244,6 +3244,206 @@ class _DrawerViewState extends State<_DrawerView> {
         ),
       ),
     );
+  }
+
+  /// Menu déclenché par long-press sur un sommet : choix entre supprimer
+  /// le coin et définir l'angle exact en degrés.
+  Future<void> _showVertexMenu(RoomShape r, int index) async {
+    if (!r.isPolygon) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Coin'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'angle'),
+            child: Row(children: const [
+              Icon(Icons.architecture, size: 18),
+              SizedBox(width: 10),
+              Text("Définir l'angle…"),
+            ]),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'delete'),
+            child: Row(children: [
+              Icon(Icons.delete_outline,
+                  size: 18, color: AppColors.error),
+              const SizedBox(width: 10),
+              Text('Supprimer ce coin',
+                  style: TextStyle(color: AppColors.error)),
+            ]),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+    if (action == 'delete') {
+      await _confirmRemoveVertex(r, index);
+    } else if (action == 'angle') {
+      await _promptVertexAngle(r, index);
+    }
+  }
+
+  Future<void> _promptVertexAngle(RoomShape r, int index) async {
+    if (!r.isPolygon) return;
+    final v = r.vertices!;
+    final n = v.length ~/ 2;
+    final prev = (index - 1 + n) % n;
+    final next = (index + 1) % n;
+    final ax = v[prev * 2], ay = v[prev * 2 + 1];
+    final bx = v[index * 2], by = v[index * 2 + 1];
+    final cx = v[next * 2], cy = v[next * 2 + 1];
+
+    final baX = ax - bx, baY = ay - by;
+    final bcX = cx - bx, bcY = cy - by;
+    final lenBA = math.sqrt(baX * baX + baY * baY);
+    final lenBC = math.sqrt(bcX * bcX + bcY * bcY);
+    if (lenBA < 1e-6 || lenBC < 1e-6) return;
+    final dot = baX * bcX + baY * bcY;
+    final cosTheta = (dot / (lenBA * lenBC)).clamp(-1.0, 1.0);
+    final currentDeg = math.acos(cosTheta) * 180 / math.pi;
+
+    final controller =
+        TextEditingController(text: currentDeg.toStringAsFixed(0));
+    String? errorText;
+
+    final result = await showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('Angle du coin'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Angle actuel : ${currentDeg.toStringAsFixed(1)}°',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Nouvel angle',
+                    hintText: 'ex. 90',
+                    suffixText: '°',
+                    errorText: errorText,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final preset in [45, 60, 90, 120, 135])
+                      OutlinedButton(
+                        onPressed: () =>
+                            controller.text = preset.toString(),
+                        child: Text('$preset°'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final raw = controller.text.trim().replaceAll(',', '.');
+                  final v = double.tryParse(raw);
+                  if (v == null || v <= 0 || v >= 180) {
+                    setLocal(
+                        () => errorText = 'Doit être entre 0° et 180° exclus.');
+                    return;
+                  }
+                  Navigator.of(ctx).pop(v);
+                },
+                child: const Text('Appliquer'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+    controller.dispose();
+    if (result == null) return;
+    _setVertexAngle(r, index, result);
+  }
+
+  /// Repositionne le sommet `index` du polygone `r` de sorte que l'angle
+  /// formé par les 2 arêtes adjacentes (prev-i et i-next) soit égal à
+  /// [angleDegrees]. Les 2 sommets voisins ne bougent pas. Le nouveau
+  /// sommet est placé sur la bissectrice perpendiculaire au segment
+  /// prev-next, du côté correspondant à la position courante (pour
+  /// préserver l'orientation du polygone).
+  void _setVertexAngle(RoomShape r, int index, double angleDegrees) {
+    if (!r.isPolygon) return;
+    final v = List<double>.from(r.vertices!);
+    final n = v.length ~/ 2;
+    if (n < 3) return;
+    final prev = (index - 1 + n) % n;
+    final next = (index + 1) % n;
+    final ax = v[prev * 2], ay = v[prev * 2 + 1];
+    final cx = v[next * 2], cy = v[next * 2 + 1];
+    final bxOld = v[index * 2], byOld = v[index * 2 + 1];
+
+    final acLen = math.sqrt((cx - ax) * (cx - ax) + (cy - ay) * (cy - ay));
+    if (acLen < 1e-6) return;
+
+    final mx = (ax + cx) / 2;
+    final my = (ay + cy) / 2;
+
+    final halfAngle = (angleDegrees * math.pi / 180) / 2;
+    final sinH = math.sin(halfAngle);
+    final cosH = math.cos(halfAngle);
+    if (sinH < 1e-6) return;
+    // Distance du milieu de AC au sommet B' (sur la bissectrice ⊥ à AC).
+    final d = (acLen / 2) * cosH / sinH;
+
+    final perpX = -(cy - ay) / acLen;
+    final perpY = (cx - ax) / acLen;
+
+    final bxOpt1 = mx + d * perpX;
+    final byOpt1 = my + d * perpY;
+    final bxOpt2 = mx - d * perpX;
+    final byOpt2 = my - d * perpY;
+    final dist1 = (bxOpt1 - bxOld) * (bxOpt1 - bxOld) +
+        (byOpt1 - byOld) * (byOpt1 - byOld);
+    final dist2 = (bxOpt2 - bxOld) * (bxOpt2 - bxOld) +
+        (byOpt2 - byOld) * (byOpt2 - byOld);
+    final newBx = (dist1 < dist2 ? bxOpt1 : bxOpt2).clamp(0.0, 1.0);
+    final newBy = (dist1 < dist2 ? byOpt1 : byOpt2).clamp(0.0, 1.0);
+
+    v[index * 2] = newBx;
+    v[index * 2 + 1] = newBy;
+
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = -double.infinity, maxY = -double.infinity;
+    for (var i = 0; i < n; i++) {
+      if (v[i * 2] < minX) minX = v[i * 2];
+      if (v[i * 2] > maxX) maxX = v[i * 2];
+      if (v[i * 2 + 1] < minY) minY = v[i * 2 + 1];
+      if (v[i * 2 + 1] > maxY) maxY = v[i * 2 + 1];
+    }
+
+    setState(() {
+      r.vertices = v;
+      r.x = minX;
+      r.y = minY;
+      r.width = maxX - minX;
+      r.height = maxY - minY;
+    });
+    widget.onChanged();
   }
 
   Future<void> _confirmRemoveVertex(RoomShape r, int index) async {
