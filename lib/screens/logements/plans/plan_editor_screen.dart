@@ -5680,6 +5680,17 @@ class _GridPainter extends CustomPainter {
 /// Painter qui dessine le polygone en cours de tracé dans le mode
 /// « Tracer une pièce » : segments déjà posés + ligne d'aperçu jusqu'au
 /// pointeur + cercles aux sommets + zone de fermeture autour du 1er sommet.
+/// Distance euclidienne d'un point au segment [a,b] (en coords normalisées).
+double _pointToSegmentDistance(Offset p, Offset a, Offset b) {
+  final dx = b.dx - a.dx;
+  final dy = b.dy - a.dy;
+  final len2 = dx * dx + dy * dy;
+  if (len2 < 1e-9) return (p - a).distance;
+  final t = (((p.dx - a.dx) * dx + (p.dy - a.dy) * dy) / len2).clamp(0.0, 1.0);
+  final proj = Offset(a.dx + t * dx, a.dy + t * dy);
+  return (p - proj).distance;
+}
+
 /// Collecte toutes les arêtes existantes du plan (pièces rectangles &
 /// polygones + murs libres) en coordonnées normalisées 0..1. Utilisé par
 /// les painters d'aperçu pour détecter et surligner les zones de
@@ -7199,11 +7210,49 @@ class _FreeWallsPainter extends CustomPainter {
     Offset toPx(double nx, double ny) =>
         Offset(nx * size.width, ny * size.height);
 
+    // Précalcule les arêtes des pièces (en normalisé) pour la détection
+    // de jointure des extrémités.
+    final roomEdges = <List<Offset>>[];
+    for (final r in plan.rooms) {
+      if (r.isPolygon && r.vertices != null) {
+        final v = r.vertices!;
+        final n = v.length ~/ 2;
+        for (var i = 0; i < n; i++) {
+          final j = (i + 1) % n;
+          roomEdges.add([
+            Offset(v[i * 2], v[i * 2 + 1]),
+            Offset(v[j * 2], v[j * 2 + 1]),
+          ]);
+        }
+      } else {
+        roomEdges.add([Offset(r.x, r.y), Offset(r.x + r.width, r.y)]);
+        roomEdges.add(
+            [Offset(r.x + r.width, r.y), Offset(r.x + r.width, r.y + r.height)]);
+        roomEdges.add([
+          Offset(r.x + r.width, r.y + r.height),
+          Offset(r.x, r.y + r.height)
+        ]);
+        roomEdges.add([Offset(r.x, r.y + r.height), Offset(r.x, r.y)]);
+      }
+    }
+
+    bool isJoined(double x, double y) {
+      const tolerance = 0.012; // 1.2% du canvas
+      for (final e in roomEdges) {
+        final dist = _pointToSegmentDistance(
+            Offset(x, y), e[0], e[1]);
+        if (dist < tolerance) return true;
+      }
+      return false;
+    }
+
     for (final w in plan.freeWalls) {
       final isSelected = w.id == selectedId;
       final isVirtual = w.isVirtual;
       final a = toPx(w.x1, w.y1);
       final b = toPx(w.x2, w.y2);
+      final joinedA = isJoined(w.x1, w.y1);
+      final joinedB = isJoined(w.x2, w.y2);
 
       // Épaisseur alignée sur celle des murs des pièces (Border 1.5 / 2.5).
       if (isVirtual) {
@@ -7225,6 +7274,34 @@ class _FreeWallsPainter extends CustomPainter {
           ..style = PaintingStyle.stroke;
         canvas.drawLine(a, b, paint);
       }
+
+      // Halo vert sur chaque extrémité qui touche un mur de pièce.
+      // Indique visuellement que la jonction est faite.
+      for (final entry
+          in <(Offset, bool)>{(a, joinedA), (b, joinedB)}) {
+        if (!entry.$2) continue;
+        final glow = Paint()
+          ..color = const Color(0xFF22C55E).withValues(alpha: 0.35)
+          ..style = PaintingStyle.fill;
+        final ring = Paint()
+          ..color = const Color(0xFF16A34A)
+          ..strokeWidth = 2
+          ..style = PaintingStyle.stroke;
+        canvas.drawCircle(entry.$1, 9, glow);
+        canvas.drawCircle(entry.$1, 6, ring);
+      }
+
+      // Cotes de position : distance perpendiculaire entre chaque extrémité
+      // du mur et les murs de la pièce qui le contient. Affichées pour
+      // toutes les murs libres (toujours visibles), en pointillé fin.
+      _drawWallPositionDimensions(
+        canvas: canvas,
+        size: size,
+        wall: w,
+        joinedA: joinedA,
+        joinedB: joinedB,
+        plan: plan,
+      );
 
       // Libellé au-dessus du milieu du mur, perpendiculaire à celui-ci.
       final label = plan.labelForWall(w);
@@ -7325,6 +7402,142 @@ class _FreeWallsPainter extends CustomPainter {
       }
     }
     return true;
+  }
+
+  /// Trace les cotes de position d'un mur libre par rapport à la pièce qui
+  /// le contient : pour chaque extrémité non-jointe à un mur, on cherche
+  /// le mur de pièce le plus proche dans la direction perpendiculaire au
+  /// mur, et on dessine un trait pointillé + un label avec la distance.
+  void _drawWallPositionDimensions({
+    required Canvas canvas,
+    required Size size,
+    required FreeWall wall,
+    required bool joinedA,
+    required bool joinedB,
+    required PlanLogement plan,
+  }) {
+    // Trouve la pièce qui contient le milieu du mur (sinon : la plus
+    // proche du milieu dans une marge raisonnable).
+    final mx = (wall.x1 + wall.x2) / 2;
+    final my = (wall.y1 + wall.y2) / 2;
+    RoomShape? containingRoom;
+    for (final r in plan.rooms) {
+      if (mx >= r.x &&
+          mx <= r.x + r.width &&
+          my >= r.y &&
+          my <= r.y + r.height) {
+        containingRoom = r;
+        break;
+      }
+    }
+    if (containingRoom == null) return;
+    final r = containingRoom;
+
+    // Direction du mur + perpendiculaire (en normalisé).
+    final dx = wall.x2 - wall.x1;
+    final dy = wall.y2 - wall.y1;
+    final lenWall = math.sqrt(dx * dx + dy * dy);
+    if (lenWall < 1e-4) return;
+    // Perpendiculaire unitaire au mur.
+    final perpX = -dy / lenWall;
+    final perpY = dx / lenWall;
+
+    final metersPerUnit = plan.scaleMetersPerUnit ?? 12.0;
+    Offset toPx(double nx, double ny) =>
+        Offset(nx * size.width, ny * size.height);
+
+    void drawDimAt({
+      required double px,
+      required double py,
+      required bool joined,
+    }) {
+      if (joined) return; // déjà connecté → pas de cote utile
+      // Cherche la pièce sur l'axe perpendiculaire : ray-cast depuis (px,py)
+      // dans la direction (perpX, perpY) puis dans la direction inverse,
+      // en s'arrêtant aux 4 bords de r. Le plus proche gagne.
+      double bestDist = double.infinity;
+      Offset? hitPoint;
+      for (final sign in [1.0, -1.0]) {
+        final dirX = perpX * sign;
+        final dirY = perpY * sign;
+        // Intersections avec les 4 bords de la pièce.
+        for (final edge in <List<double>>[
+          [r.x, r.y, r.x + r.width, r.y], // top
+          [r.x + r.width, r.y, r.x + r.width, r.y + r.height], // right
+          [r.x, r.y + r.height, r.x + r.width, r.y + r.height], // bottom
+          [r.x, r.y, r.x, r.y + r.height], // left
+        ]) {
+          final ex1 = edge[0], ey1 = edge[1];
+          final ex2 = edge[2], ey2 = edge[3];
+          final t = _rayIntersect(px, py, dirX, dirY, ex1, ey1, ex2, ey2);
+          if (t != null && t > 1e-4 && t < bestDist) {
+            bestDist = t;
+            hitPoint = Offset(px + dirX * t, py + dirY * t);
+          }
+        }
+      }
+      if (hitPoint == null || bestDist == double.infinity) return;
+
+      final startPx = toPx(px, py);
+      final endPx = toPx(hitPoint.dx, hitPoint.dy);
+      final dimPaint = Paint()
+        ..color = const Color(0xFF7C3AED).withValues(alpha: 0.55)
+        ..strokeWidth = 1
+        ..style = PaintingStyle.stroke;
+      _drawDashedSegment(canvas, startPx, endPx, dimPaint, dash: 4, gap: 3);
+
+      // Label de distance au milieu du segment de cote.
+      final meters = bestDist * metersPerUnit;
+      final label = meters >= 1.0
+          ? '${meters.toStringAsFixed(2).replaceAll('.', ',')} m'
+          : '${(meters * 100).round()} cm';
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: Color(0xFF5B21B6),
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            shadows: [Shadow(color: Colors.white, blurRadius: 2)],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final mid = Offset(
+        (startPx.dx + endPx.dx) / 2,
+        (startPx.dy + endPx.dy) / 2,
+      );
+      // Petit fond blanc semi-translucide pour la lisibilité.
+      final bgRect = Rect.fromCenter(
+        center: mid,
+        width: tp.width + 6,
+        height: tp.height + 2,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bgRect, const Radius.circular(3)),
+        Paint()..color = Colors.white.withValues(alpha: 0.9),
+      );
+      tp.paint(
+          canvas, Offset(mid.dx - tp.width / 2, mid.dy - tp.height / 2));
+    }
+
+    drawDimAt(px: wall.x1, py: wall.y1, joined: joinedA);
+    drawDimAt(px: wall.x2, py: wall.y2, joined: joinedB);
+  }
+
+  /// Cherche l'intersection entre la demi-droite partant de (px,py) dans
+  /// la direction (dirX,dirY) et le segment [(ex1,ey1), (ex2,ey2)].
+  /// Retourne le paramètre t ≥ 0 où l'intersection a lieu, ou null sinon.
+  double? _rayIntersect(double px, double py, double dirX, double dirY,
+      double ex1, double ey1, double ex2, double ey2) {
+    final segDx = ex2 - ex1;
+    final segDy = ey2 - ey1;
+    final denom = dirX * (-segDy) + dirY * segDx;
+    if (denom.abs() < 1e-9) return null;
+    final t = ((ex1 - px) * (-segDy) + (ey1 - py) * segDx) / denom;
+    final s = ((ex1 - px) * dirY - (ey1 - py) * dirX) / -denom;
+    if (t < 0 || s < -1e-4 || s > 1 + 1e-4) return null;
+    return t;
   }
 
   void _drawDashedSegment(
