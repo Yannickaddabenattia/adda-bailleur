@@ -2113,6 +2113,15 @@ class _DrawerViewState extends State<_DrawerView> {
                                   ),
                                 ),
                               ),
+                            // Cotes (dimensions) sur chaque arête de pièce.
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: CustomPaint(
+                                  painter: _DimensionsPainter(
+                                      plan: widget.plan),
+                                ),
+                              ),
+                            ),
                             // Poignées du mur sélectionné (drag).
                             if (_selectedWall() != null)
                               ..._buildSelectedWallHandles(
@@ -5784,6 +5793,190 @@ void _paintOverlapHighlights({
       canvas.drawLine(s, t, glow);
       canvas.drawLine(s, t, paint);
     }
+  }
+}
+
+/// Painter qui affiche les dimensions (longueur en mètres si calibré, ou
+/// fraction de canvas sinon) de chaque arête visible des pièces. Le texte
+/// est positionné juste à l'extérieur de chaque arête, perpendiculairement.
+class _DimensionsPainter extends CustomPainter {
+  final PlanLogement plan;
+
+  _DimensionsPainter({required this.plan});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+    final scale = plan.scaleMetersPerUnit;
+    // Quand calibré, 1 unité = N mètres. Sinon on n'a pas de réalité, mais
+    // on garde le canvas par défaut à 12 m (cohérent avec _wallScaleMeters).
+    final metersPerUnit = scale ?? 12.0;
+
+    for (final r in plan.rooms) {
+      final edges = _edgesOf(r);
+      final hidden = _hiddenEdgeSet(r);
+      // Centroïde de la pièce (en coords normalisées).
+      final centroid = _centroidOf(r);
+      for (var i = 0; i < edges.length; i++) {
+        if (hidden.contains(i)) continue;
+        final e = edges[i];
+        final a = e[0];
+        final b = e[1];
+        final dx = b.dx - a.dx;
+        final dy = b.dy - a.dy;
+        final lenNorm = math.sqrt(dx * dx + dy * dy);
+        if (lenNorm < 0.01) continue; // trop court pour méritter une cote
+        final lenM = lenNorm * metersPerUnit;
+        // Format : N,NN m si > 1 m, sinon NN cm.
+        final label = lenM >= 1.0
+            ? '${lenM.toStringAsFixed(2).replaceAll('.', ',')} m'
+            : '${(lenM * 100).round()} cm';
+
+        // Position du midpoint en pixels.
+        final midN = Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+        final midPx = toPx(midN);
+
+        // Outward perpendiculaire : on prend la perpendiculaire (-dy, dx)
+        // normalisée, puis on choisit le signe qui s'éloigne du centroïde.
+        var perpX = -dy / lenNorm;
+        var perpY = dx / lenNorm;
+        final toCentroidX = centroid.dx - midN.dx;
+        final toCentroidY = centroid.dy - midN.dy;
+        if (perpX * toCentroidX + perpY * toCentroidY > 0) {
+          // perp pointe vers le centroïde → inverse pour aller dehors
+          perpX = -perpX;
+          perpY = -perpY;
+        }
+
+        const offsetPx = 14.0;
+        final labelCenter = Offset(
+          midPx.dx + perpX * offsetPx,
+          midPx.dy + perpY * offsetPx,
+        );
+
+        // Texte avec fond blanc semi-transparent pour la lisibilité.
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: scale != null
+                  ? const Color(0xFF065F46)
+                  : const Color(0xFF334155),
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        final w = textPainter.width;
+        final h = textPainter.height;
+        // Petit fond arrondi.
+        final bgRect = Rect.fromCenter(
+          center: labelCenter,
+          width: w + 8,
+          height: h + 4,
+        );
+        final bgPaint = Paint()
+          ..color = Colors.white.withValues(alpha: 0.92);
+        final borderPaint = Paint()
+          ..color = scale != null
+              ? const Color(0xFF10B981).withValues(alpha: 0.45)
+              : const Color(0xFFCBD5E1)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.8;
+        final rrect = RRect.fromRectAndRadius(
+            bgRect, const Radius.circular(4));
+        canvas.drawRRect(rrect, bgPaint);
+        canvas.drawRRect(rrect, borderPaint);
+        textPainter.paint(
+          canvas,
+          Offset(labelCenter.dx - w / 2, labelCenter.dy - h / 2),
+        );
+      }
+    }
+  }
+
+  Offset _centroidOf(RoomShape r) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      final n = v.length ~/ 2;
+      double sx = 0, sy = 0;
+      for (var i = 0; i < n; i++) {
+        sx += v[i * 2];
+        sy += v[i * 2 + 1];
+      }
+      return Offset(sx / n, sy / n);
+    }
+    return Offset(r.x + r.width / 2, r.y + r.height / 2);
+  }
+
+  List<List<Offset>> _edgesOf(RoomShape r) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      final n = v.length ~/ 2;
+      final out = <List<Offset>>[];
+      for (var i = 0; i < n; i++) {
+        final j = (i + 1) % n;
+        out.add([
+          Offset(v[i * 2], v[i * 2 + 1]),
+          Offset(v[j * 2], v[j * 2 + 1]),
+        ]);
+      }
+      return out;
+    }
+    // Rectangle : ordre top, right, bottom, left pour matcher hiddenWalls.
+    return [
+      [Offset(r.x, r.y), Offset(r.x + r.width, r.y)],
+      [Offset(r.x + r.width, r.y), Offset(r.x + r.width, r.y + r.height)],
+      [Offset(r.x + r.width, r.y + r.height), Offset(r.x, r.y + r.height)],
+      [Offset(r.x, r.y + r.height), Offset(r.x, r.y)],
+    ];
+  }
+
+  Set<int> _hiddenEdgeSet(RoomShape r) {
+    final s = <int>{};
+    if (r.isPolygon) {
+      for (final h in r.hiddenWalls) {
+        if (h.startsWith('edge:')) {
+          final n = int.tryParse(h.substring(5));
+          if (n != null) s.add(n);
+        }
+      }
+    } else {
+      const mapping = {'top': 0, 'right': 1, 'bottom': 2, 'left': 3};
+      for (final h in r.hiddenWalls) {
+        final idx = mapping[h];
+        if (idx != null) s.add(idx);
+      }
+    }
+    return s;
+  }
+
+  @override
+  bool shouldRepaint(covariant _DimensionsPainter old) =>
+      old.plan.rooms.length != plan.rooms.length ||
+      old.plan.scaleMetersPerUnit != plan.scaleMetersPerUnit ||
+      !_sameGeometry(old.plan.rooms, plan.rooms);
+
+  static bool _sameGeometry(List<RoomShape> a, List<RoomShape> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].x != b[i].x ||
+          a[i].y != b[i].y ||
+          a[i].width != b[i].width ||
+          a[i].height != b[i].height) return false;
+      final va = a[i].vertices;
+      final vb = b[i].vertices;
+      if ((va == null) != (vb == null)) return false;
+      if (va != null && vb != null) {
+        if (va.length != vb.length) return false;
+        for (var k = 0; k < va.length; k++) {
+          if (va[k] != vb[k]) return false;
+        }
+      }
+    }
+    return true;
   }
 }
 
