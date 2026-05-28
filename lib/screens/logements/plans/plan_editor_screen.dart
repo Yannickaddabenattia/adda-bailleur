@@ -3226,7 +3226,7 @@ class _DrawerViewState extends State<_DrawerView> {
       },
       onPanUpdate: (d) => _onPanUpdate(r, d.globalPosition, canvas),
       onPanEnd: (_) => _onPanEnd(),
-      onLongPress: () => _removeVertex(r, index),
+      onLongPress: () => _confirmRemoveVertex(r, index),
       child: Container(
         width: 22,
         height: 22,
@@ -3244,6 +3244,39 @@ class _DrawerViewState extends State<_DrawerView> {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmRemoveVertex(RoomShape r, int index) async {
+    if (!r.isPolygon) return;
+    final n = (r.vertices?.length ?? 0) ~/ 2;
+    if (n <= 3) {
+      // Un polygone doit garder au moins 3 sommets.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Un polygone doit conserver au moins 3 sommets.')),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce sommet ?'),
+        content: const Text(
+            'La pièce sera recalée sans ce coin. Cette action peut être annulée via Annuler (↶).'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) _removeVertex(r, index);
   }
 
   void _insertVertex(RoomShape r, int edgeIndex) {
