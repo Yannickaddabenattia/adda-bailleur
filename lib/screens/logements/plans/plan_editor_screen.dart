@@ -4094,52 +4094,82 @@ class _DrawerViewState extends State<_DrawerView> {
     }
   }
 
-  /// Détecte si un cycle fermé existe parmi les murs solides en partant
-  /// de `newWall`. Si oui, crée une pièce polygonale dont les sommets
-  /// suivent le cycle, et supprime les murs consommés.
+  /// Détecte si un cycle fermé existe en partant de `newWall`. Le graphe
+  /// considéré inclut tous les murs libres solides ET toutes les arêtes
+  /// des pièces existantes — permet de "fermer" une pièce en s'appuyant
+  /// sur les murs des pièces voisines (ex. un couloir bordé par 2 chambres
+  /// + 1 mur simple). Si un cycle est trouvé, crée une pièce polygonale.
   bool _maybeFormRoomFromWalls(FreeWall newWall) {
-    const tol = 0.022; // ≥ snap radius pour matcher les extrémités snapped
+    const tol = 0.022;
     bool eq(double a, double b, double c, double d) =>
         math.sqrt((a - c) * (a - c) + (b - d) * (b - d)) < tol;
 
-    final candidates = widget.plan.freeWalls
-        .where((w) => !w.isVirtual)
-        .toList();
-    if (candidates.length < 3) return false;
+    // Construit la liste d'arêtes du graphe :
+    // - une entrée par mur libre solide
+    // - une entrée par arête de pièce existante (rect ou polygone)
+    // chaque entrée a un id stable pour le marquage de visites.
+    final edges = <({String id, double x1, double y1, double x2, double y2,
+                    bool fromRoom})>[];
+    for (final w in widget.plan.freeWalls) {
+      if (w.isVirtual || w.id == newWall.id) continue;
+      edges.add(
+          (id: 'wall:${w.id}', x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2,
+              fromRoom: false));
+    }
+    for (final r in widget.plan.rooms) {
+      final corners = _roomCorners(r);
+      for (var i = 0; i < corners.length; i++) {
+        final j = (i + 1) % corners.length;
+        edges.add((
+          id: 'room:${r.id}:$i',
+          x1: corners[i].dx,
+          y1: corners[i].dy,
+          x2: corners[j].dx,
+          y2: corners[j].dy,
+          fromRoom: true,
+        ));
+      }
+    }
+    if (edges.isEmpty) return false;
 
-    // DFS pour trouver un chemin de (newWall.x2, y2) vers (newWall.x1, y1)
-    // sans repasser par newWall.
-    final visited = <String>{newWall.id};
-    final path = <FreeWall>[];
-    bool dfs(double curX, double curY) {
+    // DFS limitée en profondeur pour éviter les chemins absurdes : un
+    // cycle raisonnable d'une pièce devrait tenir en < 20 arêtes.
+    const maxDepth = 20;
+    final visited = <String>{};
+    final path = <
+        ({String id, double x1, double y1, double x2, double y2,
+            bool fromRoom})>[];
+
+    bool dfs(double curX, double curY, int depth) {
       if (eq(curX, curY, newWall.x1, newWall.y1) && path.isNotEmpty) {
         return true;
       }
-      for (final w in candidates) {
-        if (visited.contains(w.id)) continue;
-        final side1 = eq(w.x1, w.y1, curX, curY);
-        final side2 = eq(w.x2, w.y2, curX, curY);
+      if (depth >= maxDepth) return false;
+      for (final e in edges) {
+        if (visited.contains(e.id)) continue;
+        final side1 = eq(e.x1, e.y1, curX, curY);
+        final side2 = eq(e.x2, e.y2, curX, curY);
         if (!side1 && !side2) continue;
-        visited.add(w.id);
-        path.add(w);
-        final nextX = side1 ? w.x2 : w.x1;
-        final nextY = side1 ? w.y2 : w.y1;
-        if (dfs(nextX, nextY)) return true;
-        visited.remove(w.id);
+        visited.add(e.id);
+        path.add(e);
+        final nextX = side1 ? e.x2 : e.x1;
+        final nextY = side1 ? e.y2 : e.y1;
+        if (dfs(nextX, nextY, depth + 1)) return true;
+        visited.remove(e.id);
         path.removeLast();
       }
       return false;
     }
 
-    if (!dfs(newWall.x2, newWall.y2)) return false;
+    if (!dfs(newWall.x2, newWall.y2, 0)) return false;
 
-    // Construit la liste de sommets du cycle.
+    // Construit les sommets du cycle.
     final verts = <double>[newWall.x2, newWall.y2];
     double curX = newWall.x2, curY = newWall.y2;
-    for (final w in path) {
-      final side1 = eq(w.x1, w.y1, curX, curY);
-      final otherX = side1 ? w.x2 : w.x1;
-      final otherY = side1 ? w.y2 : w.y1;
+    for (final e in path) {
+      final side1 = eq(e.x1, e.y1, curX, curY);
+      final otherX = side1 ? e.x2 : e.x1;
+      final otherY = side1 ? e.y2 : e.y1;
       if (!eq(otherX, otherY, newWall.x1, newWall.y1)) {
         verts..add(otherX)..add(otherY);
       }
@@ -4172,11 +4202,13 @@ class _DrawerViewState extends State<_DrawerView> {
       room.height = mxY - mnY;
       widget.plan.rooms.add(room);
 
-      // Consomme les murs du cycle (ils sont maintenant les arêtes de la
-      // nouvelle pièce, plus besoin de les garder comme murs libres).
+      // Consomme uniquement les murs libres du cycle (les arêtes de pièces
+      // existantes restent en place — elles appartiennent à leur pièce).
       widget.plan.freeWalls.remove(newWall);
-      for (final w in path) {
-        widget.plan.freeWalls.remove(w);
+      for (final e in path) {
+        if (e.fromRoom) continue;
+        final id = e.id.replaceFirst('wall:', '');
+        widget.plan.freeWalls.removeWhere((w) => w.id == id);
       }
     });
     return true;
