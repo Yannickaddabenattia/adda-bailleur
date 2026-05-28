@@ -2141,6 +2141,11 @@ class _DrawerViewState extends State<_DrawerView> {
                                       willClose: willClose,
                                       existingEdges:
                                           _collectExistingEdges(widget.plan),
+                                      metersPerUnit: widget
+                                              .plan.scaleMetersPerUnit ??
+                                          12.0,
+                                      isCalibrated:
+                                          widget.plan.isCalibrated,
                                     ),
                                   ),
                                 ),
@@ -6254,12 +6259,22 @@ class _FreeDrawPreviewPainter extends CustomPainter {
   /// Arêtes existantes (pièces + murs libres) pour détecter chevauchements.
   final List<List<Offset>> existingEdges;
 
+  /// Échelle en mètres par unité normalisée — utilisée pour afficher la
+  /// longueur de chaque segment du tracé.
+  final double metersPerUnit;
+
+  /// Indique si l'échelle vient d'un calibrage (true) ou de la valeur par
+  /// défaut 12 m (false). Influe sur la couleur du libellé de cote.
+  final bool isCalibrated;
+
   _FreeDrawPreviewPainter({
     required this.points,
     required this.hover,
     required this.closeRadius,
     required this.willClose,
     this.existingEdges = const [],
+    this.metersPerUnit = 12.0,
+    this.isCalibrated = false,
   });
 
   @override
@@ -6359,6 +6374,83 @@ class _FreeDrawPreviewPainter extends CustomPainter {
       canvas.drawCircle(p, r, fillPaint);
       canvas.drawCircle(p, r, borderPaint);
     }
+
+    // Cote de chaque segment posé : longueur en m (ou cm si < 1m), placée
+    // au milieu, légèrement décalée perpendiculairement.
+    for (var i = 0; i < points.length - 1; i++) {
+      _paintSegmentLength(canvas, points[i], points[i + 1], toPx);
+    }
+    // Cote de la ligne d'aperçu (dernier sommet → curseur).
+    if (hover != null && points.isNotEmpty) {
+      _paintSegmentLength(canvas, points.last, hover!, toPx,
+          accent: willClose);
+    }
+  }
+
+  void _paintSegmentLength(
+    Canvas canvas,
+    Offset a,
+    Offset b,
+    Offset Function(Offset) toPx, {
+    bool accent = false,
+  }) {
+    final dx = b.dx - a.dx;
+    final dy = b.dy - a.dy;
+    final lenNorm = math.sqrt(dx * dx + dy * dy);
+    if (lenNorm < 0.008) return;
+    final meters = lenNorm * metersPerUnit;
+    final label = meters >= 1.0
+        ? '${meters.toStringAsFixed(2).replaceAll('.', ',')} m'
+        : '${(meters * 100).round()} cm';
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: accent
+              ? const Color(0xFF14532D)
+              : (isCalibrated
+                  ? const Color(0xFF065F46)
+                  : const Color(0xFF1E3A8A)),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    // Position : milieu, décalé perpendiculairement de offsetPx pixels.
+    final midPx = toPx(Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2));
+    final perpX = -dy / lenNorm;
+    final perpY = dx / lenNorm;
+    const offsetPx = 14.0;
+    final center = Offset(
+      midPx.dx + perpX * offsetPx,
+      midPx.dy + perpY * offsetPx,
+    );
+    final rect = Rect.fromCenter(
+      center: center,
+      width: tp.width + 8,
+      height: tp.height + 4,
+    );
+    final bg = Paint()
+      ..color = (accent ? const Color(0xFFD1FAE5) : Colors.white)
+          .withValues(alpha: 0.95);
+    final border = Paint()
+      ..color = accent
+          ? const Color(0xFF10B981)
+          : (isCalibrated
+              ? const Color(0xFF10B981).withValues(alpha: 0.45)
+              : const Color(0xFF2563EB).withValues(alpha: 0.4))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    final rrect =
+        RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    canvas.drawRRect(rrect, bg);
+    canvas.drawRRect(rrect, border);
+    tp.paint(
+      canvas,
+      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+    );
   }
 
   void _drawDashedLine(Canvas canvas, Offset a, Offset b, Paint paint) {
