@@ -1902,6 +1902,20 @@ class _DrawerViewState extends State<_DrawerView> {
   bool get _isInDrawingMode =>
       _freeDrawMode || _calibrateMode || _drawWallMode;
 
+  /// Test si une arête (paire d'Offset) correspond à une arête de la pièce
+  /// donnée. Utilisé pour exclure les arêtes de la pièce en cours de drag
+  /// dans la détection d'overlap (sinon elle s'auto-superpose).
+  bool _edgeBelongsTo(List<Offset> edge, RoomShape r) {
+    final roomEdges = _RoomDragOverlapPainter._edgesOf(r);
+    for (final re in roomEdges) {
+      if ((re[0] == edge[0] && re[1] == edge[1]) ||
+          (re[0] == edge[1] && re[1] == edge[0])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// En mode prise de photos depuis l'EDL (readOnly + allowWallPhotoCapture),
   /// pièce verrouillée par appui long. Tant qu'une pièce est verrouillée,
   /// seuls ses badges de murs restent visibles et capturables — afin que
@@ -2139,6 +2153,25 @@ class _DrawerViewState extends State<_DrawerView> {
                                       isVirtual: _drawWallVirtual,
                                       existingEdges:
                                           _collectExistingEdges(widget.plan),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            // Surbrillance des chevauchements pendant qu'on
+                            // déplace une pièce existante (drag).
+                            if (_dragMode == _DragMode.move &&
+                                _selectedRoom() != null)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _RoomDragOverlapPainter(
+                                      draggedRoom: _selectedRoom()!,
+                                      otherEdges: _collectExistingEdges(
+                                              widget.plan)
+                                          .where((e) =>
+                                              !_edgeBelongsTo(e,
+                                                  _selectedRoom()!))
+                                          .toList(),
                                     ),
                                   ),
                                 ),
@@ -5419,6 +5452,59 @@ void _paintOverlapHighlights({
   }
 }
 
+/// Painter qui matérialise les chevauchements entre une pièce en cours de
+/// déplacement (par drag) et les autres pièces/murs du plan. Permet à
+/// l'utilisateur d'aligner précisément ses pièces lors de l'accolage.
+class _RoomDragOverlapPainter extends CustomPainter {
+  final RoomShape draggedRoom;
+  final List<List<Offset>> otherEdges;
+
+  _RoomDragOverlapPainter({
+    required this.draggedRoom,
+    required this.otherEdges,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final draggedEdges = _edgesOf(draggedRoom);
+    for (final dEdge in draggedEdges) {
+      _paintOverlapHighlights(
+        canvas: canvas,
+        size: size,
+        a: dEdge[0],
+        b: dEdge[1],
+        existingEdges: otherEdges,
+      );
+    }
+  }
+
+  static List<List<Offset>> _edgesOf(RoomShape r) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      final n = v.length ~/ 2;
+      final out = <List<Offset>>[];
+      for (var i = 0; i < n; i++) {
+        final j = (i + 1) % n;
+        out.add([
+          Offset(v[i * 2], v[i * 2 + 1]),
+          Offset(v[j * 2], v[j * 2 + 1]),
+        ]);
+      }
+      return out;
+    }
+    return [
+      [Offset(r.x, r.y), Offset(r.x + r.width, r.y)],
+      [Offset(r.x + r.width, r.y), Offset(r.x + r.width, r.y + r.height)],
+      [Offset(r.x + r.width, r.y + r.height), Offset(r.x, r.y + r.height)],
+      [Offset(r.x, r.y + r.height), Offset(r.x, r.y)],
+    ];
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoomDragOverlapPainter old) =>
+      old.draggedRoom != draggedRoom || old.otherEdges != otherEdges;
+}
+
 class _FreeDrawPreviewPainter extends CustomPainter {
   /// Sommets posés en coordonnées normalisées 0..1.
   final List<Offset> points;
@@ -5446,8 +5532,21 @@ class _FreeDrawPreviewPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
     Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+
+    // 0) Diagnostic : trace toutes les arêtes détectées en cyan translucide.
+    //    Permet de visualiser ce que le système connaît comme arêtes
+    //    existantes (pièces + murs libres). Si elles ne s'affichent pas,
+    //    c'est que le painter ne tourne pas.
+    final debugPaint = Paint()
+      ..color = const Color(0xFF06B6D4).withValues(alpha: 0.55)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    for (final e in existingEdges) {
+      canvas.drawLine(toPx(e[0]), toPx(e[1]), debugPaint);
+    }
+
+    if (points.isEmpty) return;
 
     // 1) Surbrillance des chevauchements (dessinée en premier, sous les
     //    segments d'aperçu) : pour chaque segment posé + le segment courant
