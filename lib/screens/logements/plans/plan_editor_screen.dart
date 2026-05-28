@@ -1880,6 +1880,11 @@ class _DrawerViewState extends State<_DrawerView> {
   /// nommé "Séparation A / B"). Activable depuis le bandeau de tracé.
   bool _drawWallVirtual = false;
 
+  /// Position courante du curseur (normalisée) pendant le mode tracé mur,
+  /// pour afficher la ligne d'aperçu entre point1 et le curseur. Null si
+  /// pas en mode wall draw ou pas encore de mouvement détecté.
+  Offset? _drawWallHover;
+
   /// Etat du drag en cours sur un mur libre sélectionné.
   _WallDragMode? _wallDragMode;
   Offset? _wallDragStart;
@@ -2054,10 +2059,16 @@ class _DrawerViewState extends State<_DrawerView> {
                       (2 * cy - 1).clamp(-1.0, 1.0),
                     ),
                     child: MouseRegion(
-                      onHover: _freeDrawMode
-                          ? (e) => _updateFreeDrawHover(e.localPosition, size)
+                      onHover: (_freeDrawMode || _drawWallMode)
+                          ? (e) {
+                              if (_freeDrawMode) {
+                                _updateFreeDrawHover(e.localPosition, size);
+                              } else if (_drawWallMode) {
+                                _updateDrawWallHover(e.localPosition, size);
+                              }
+                            }
                           : null,
-                      cursor: _freeDrawMode
+                      cursor: (_freeDrawMode || _drawWallMode)
                           ? SystemMouseCursors.precise
                           : MouseCursor.defer,
                       child: GestureDetector(
@@ -2101,6 +2112,8 @@ class _DrawerViewState extends State<_DrawerView> {
                                       hover: _freeDrawHover,
                                       closeRadius: _freeDrawCloseRadius,
                                       willClose: willClose,
+                                      existingEdges:
+                                          _collectExistingEdges(widget.plan),
                                     ),
                                   ),
                                 ),
@@ -2122,6 +2135,10 @@ class _DrawerViewState extends State<_DrawerView> {
                                   child: CustomPaint(
                                     painter: _DrawWallPreviewPainter(
                                       p1: _drawWallPoint1,
+                                      hover: _drawWallHover,
+                                      isVirtual: _drawWallVirtual,
+                                      existingEdges:
+                                          _collectExistingEdges(widget.plan),
                                     ),
                                   ),
                                 ),
@@ -3617,6 +3634,7 @@ class _DrawerViewState extends State<_DrawerView> {
       _drawWallMode = true;
       _drawWallVirtual = virtual;
       _drawWallPoint1 = null;
+      _drawWallHover = null;
       _freeDrawMode = false;
       _freeDrawPoints.clear();
       _calibrateMode = false;
@@ -3632,6 +3650,7 @@ class _DrawerViewState extends State<_DrawerView> {
     setState(() {
       _drawWallMode = false;
       _drawWallPoint1 = null;
+      _drawWallHover = null;
     });
   }
 
@@ -3977,6 +3996,16 @@ class _DrawerViewState extends State<_DrawerView> {
     if (!_freeDrawMode) return;
     setState(() {
       _freeDrawHover = Offset(
+        (pos.dx / canvas.width).clamp(0.0, 1.0),
+        (pos.dy / canvas.height).clamp(0.0, 1.0),
+      );
+    });
+  }
+
+  void _updateDrawWallHover(Offset pos, Size canvas) {
+    if (!_drawWallMode) return;
+    setState(() {
+      _drawWallHover = Offset(
         (pos.dx / canvas.width).clamp(0.0, 1.0),
         (pos.dy / canvas.height).clamp(0.0, 1.0),
       );
@@ -5274,6 +5303,112 @@ class _GridPainter extends CustomPainter {
 /// Painter qui dessine le polygone en cours de tracé dans le mode
 /// « Tracer une pièce » : segments déjà posés + ligne d'aperçu jusqu'au
 /// pointeur + cercles aux sommets + zone de fermeture autour du 1er sommet.
+/// Collecte toutes les arêtes existantes du plan (pièces rectangles &
+/// polygones + murs libres) en coordonnées normalisées 0..1. Utilisé par
+/// les painters d'aperçu pour détecter et surligner les zones de
+/// chevauchement avec le tracé en cours.
+List<List<Offset>> _collectExistingEdges(PlanLogement plan) {
+  final edges = <List<Offset>>[];
+  for (final r in plan.rooms) {
+    if (r.isPolygon && r.vertices != null) {
+      final v = r.vertices!;
+      final n = v.length ~/ 2;
+      for (var i = 0; i < n; i++) {
+        final j = (i + 1) % n;
+        edges.add([
+          Offset(v[i * 2], v[i * 2 + 1]),
+          Offset(v[j * 2], v[j * 2 + 1]),
+        ]);
+      }
+    } else {
+      final x1 = r.x, y1 = r.y;
+      final x2 = r.x + r.width, y2 = r.y + r.height;
+      edges.add([Offset(x1, y1), Offset(x2, y1)]);
+      edges.add([Offset(x2, y1), Offset(x2, y2)]);
+      edges.add([Offset(x2, y2), Offset(x1, y2)]);
+      edges.add([Offset(x1, y2), Offset(x1, y1)]);
+    }
+  }
+  for (final w in plan.freeWalls) {
+    edges.add([Offset(w.x1, w.y1), Offset(w.x2, w.y2)]);
+  }
+  return edges;
+}
+
+/// Calcule la portion de chevauchement entre les segments AB et CD si :
+///   - ils sont quasi parallèles (angle < ~5°)
+///   - leur distance perpendiculaire est < perpTolerance (en unités
+///     normalisées du canvas)
+///   - leurs projections se recouvrent d'au moins minOverlap
+///
+/// Retourne [start, end] en coords normalisées, sinon null.
+List<Offset>? _segmentOverlapZone(
+  Offset a,
+  Offset b,
+  Offset c,
+  Offset d, {
+  double perpTolerance = 0.012,
+  double minOverlap = 0.008,
+}) {
+  final abDx = b.dx - a.dx;
+  final abDy = b.dy - a.dy;
+  final lenAB = math.sqrt(abDx * abDx + abDy * abDy);
+  if (lenAB < 1e-6) return null;
+  final cdDx = d.dx - c.dx;
+  final cdDy = d.dy - c.dy;
+  final lenCD = math.sqrt(cdDx * cdDx + cdDy * cdDy);
+  if (lenCD < 1e-6) return null;
+
+  // Vecteurs unitaires
+  final ux = abDx / lenAB;
+  final uy = abDy / lenAB;
+  final vx = cdDx / lenCD;
+  final vy = cdDy / lenCD;
+
+  // Parallélisme : produit vectoriel des unitaires (sin de l'angle).
+  final cross = (ux * vy - uy * vx).abs();
+  if (cross > 0.09) return null; // ~5°
+
+  // Distance perpendiculaire entre les 2 lignes : projeter (c - a) sur
+  // la normale unitaire à AB (-uy, ux).
+  final perpA = ((c.dx - a.dx) * (-uy) + (c.dy - a.dy) * ux).abs();
+  if (perpA > perpTolerance) return null;
+
+  // Projection de C et D sur AB en paramètre t (0 = a, 1 = b).
+  final tC = ((c.dx - a.dx) * ux + (c.dy - a.dy) * uy) / lenAB;
+  final tD = ((d.dx - a.dx) * ux + (d.dy - a.dy) * uy) / lenAB;
+  final tMin = math.max(0.0, math.min(tC, tD));
+  final tMax = math.min(1.0, math.max(tC, tD));
+  if (tMax - tMin < minOverlap / lenAB) return null;
+
+  final start = Offset(a.dx + abDx * tMin, a.dy + abDy * tMin);
+  final end = Offset(a.dx + abDx * tMax, a.dy + abDy * tMax);
+  return [start, end];
+}
+
+/// Peint en surbrillance toutes les zones de chevauchement entre le
+/// segment AB (préview) et les arêtes existantes.
+void _paintOverlapHighlights({
+  required Canvas canvas,
+  required Size size,
+  required Offset a,
+  required Offset b,
+  required List<List<Offset>> existingEdges,
+}) {
+  final paint = Paint()
+    ..color = const Color(0xFFEA580C) // orange vif
+    ..strokeWidth = 5
+    ..strokeCap = StrokeCap.round
+    ..style = PaintingStyle.stroke;
+  Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+  for (final e in existingEdges) {
+    final overlap = _segmentOverlapZone(a, b, e[0], e[1]);
+    if (overlap != null) {
+      canvas.drawLine(toPx(overlap[0]), toPx(overlap[1]), paint);
+    }
+  }
+}
+
 class _FreeDrawPreviewPainter extends CustomPainter {
   /// Sommets posés en coordonnées normalisées 0..1.
   final List<Offset> points;
@@ -5288,17 +5423,43 @@ class _FreeDrawPreviewPainter extends CustomPainter {
   /// ligne d'aperçu en vert et grossir le 1er sommet).
   final bool willClose;
 
+  /// Arêtes existantes (pièces + murs libres) pour détecter chevauchements.
+  final List<List<Offset>> existingEdges;
+
   _FreeDrawPreviewPainter({
     required this.points,
     required this.hover,
     required this.closeRadius,
     required this.willClose,
+    this.existingEdges = const [],
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
     Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+
+    // 1) Surbrillance des chevauchements (dessinée en premier, sous les
+    //    segments d'aperçu) : pour chaque segment posé + le segment courant
+    //    de prévisualisation.
+    for (var i = 0; i < points.length - 1; i++) {
+      _paintOverlapHighlights(
+        canvas: canvas,
+        size: size,
+        a: points[i],
+        b: points[i + 1],
+        existingEdges: existingEdges,
+      );
+    }
+    if (hover != null && points.isNotEmpty) {
+      _paintOverlapHighlights(
+        canvas: canvas,
+        size: size,
+        a: points.last,
+        b: hover!,
+        existingEdges: existingEdges,
+      );
+    }
 
     final segPaint = Paint()
       ..color = const Color(0xFF2563EB)
@@ -5385,7 +5546,8 @@ class _FreeDrawPreviewPainter extends CustomPainter {
   bool shouldRepaint(covariant _FreeDrawPreviewPainter old) =>
       old.points != points ||
       old.hover != hover ||
-      old.willClose != willClose;
+      old.willClose != willClose ||
+      old.existingEdges != existingEdges;
 }
 
 /// Peint un polygone (vertices en coords locales) avec :
@@ -6560,12 +6722,65 @@ class _FreeWallsPainter extends CustomPainter {
 /// (avant le 2ᵉ point, qui finalise et crée le mur).
 class _DrawWallPreviewPainter extends CustomPainter {
   final Offset? p1;
-  _DrawWallPreviewPainter({required this.p1});
+  final Offset? hover;
+  final bool isVirtual;
+  final List<List<Offset>> existingEdges;
+
+  _DrawWallPreviewPainter({
+    required this.p1,
+    this.hover,
+    this.isVirtual = false,
+    this.existingEdges = const [],
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (p1 == null) return;
-    final a = Offset(p1!.dx * size.width, p1!.dy * size.height);
+    Offset toPx(Offset p) => Offset(p.dx * size.width, p.dy * size.height);
+    final a = toPx(p1!);
+
+    // 1) Aperçu de la future ligne (p1 → curseur) + surbrillance overlap.
+    if (hover != null) {
+      _paintOverlapHighlights(
+        canvas: canvas,
+        size: size,
+        a: p1!,
+        b: hover!,
+        existingEdges: existingEdges,
+      );
+      final b = toPx(hover!);
+      final paint = Paint()
+        ..color = isVirtual
+            ? const Color(0xFF64748B)
+            : const Color(0xFF7C3AED).withValues(alpha: 0.7)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke;
+      if (isVirtual) {
+        const dash = 8.0;
+        const gap = 5.0;
+        final total = (b - a).distance;
+        if (total >= 1) {
+          final dx = (b.dx - a.dx) / total;
+          final dy = (b.dy - a.dy) / total;
+          double pos = 0;
+          while (pos < total) {
+            final s = Offset(a.dx + dx * pos, a.dy + dy * pos);
+            final e = Offset(
+              a.dx + dx * math.min(pos + dash, total),
+              a.dy + dy * math.min(pos + dash, total),
+            );
+            canvas.drawLine(s, e, paint);
+            pos += dash + gap;
+          }
+        } else {
+          canvas.drawLine(a, b, paint);
+        }
+      } else {
+        canvas.drawLine(a, b, paint);
+      }
+    }
+
+    // 2) Marqueur du 1er point posé.
     final fill = Paint()..color = Colors.white;
     final border = Paint()
       ..color = const Color(0xFF7C3AED)
@@ -6576,7 +6791,11 @@ class _DrawWallPreviewPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DrawWallPreviewPainter old) => old.p1 != p1;
+  bool shouldRepaint(covariant _DrawWallPreviewPainter old) =>
+      old.p1 != p1 ||
+      old.hover != hover ||
+      old.isVirtual != isVirtual ||
+      old.existingEdges != existingEdges;
 }
 
 /// Bannière affichée pendant le mode "Tracer un mur". Inclut un toggle
