@@ -1874,7 +1874,7 @@ class _DrawerViewState extends State<_DrawerView> {
 
   /// Contraint le segment courant à un multiple de 45° par rapport au sommet
   /// précédent. Activable depuis la bannière du mode tracé.
-  bool _freeDrawOrthoLock = false;
+  bool _freeDrawOrthoLock = true;
 
   /// Rayon (en proportion du canvas) autour du premier sommet où un tap
   /// déclenche la fermeture automatique du polygone.
@@ -4875,7 +4875,7 @@ class _DrawerViewState extends State<_DrawerView> {
       _freeDrawMode = true;
       _freeDrawPoints.clear();
       _freeDrawHover = null;
-      _freeDrawOrthoLock = false;
+      _freeDrawOrthoLock = true;
       _annotateMode = false;
       widget.onSelect(null);
     });
@@ -5119,18 +5119,20 @@ class _DrawerViewState extends State<_DrawerView> {
 
   /// Contraint le vecteur `last → cur` à un multiple de 45°, en conservant
   /// la distance entre les deux points.
+  /// Snap le segment `last → cur` strictement à l'horizontale OU la
+  /// verticale (multiples de 90°). Garde la même distance, choisit l'axe
+  /// le plus proche de la direction courante.
   Offset _applyOrthoLock(Offset last, Offset cur) {
     final dx = cur.dx - last.dx;
     final dy = cur.dy - last.dy;
     final dist = math.sqrt(dx * dx + dy * dy);
     if (dist < 1e-6) return cur;
-    final angle = math.atan2(dy, dx);
-    const step = math.pi / 4; // 45°
-    final snappedAngle = (angle / step).round() * step;
-    return Offset(
-      last.dx + dist * math.cos(snappedAngle),
-      last.dy + dist * math.sin(snappedAngle),
-    );
+    if (dx.abs() >= dy.abs()) {
+      // Horizontal : on garde dx, dy = 0.
+      return Offset(cur.dx, last.dy);
+    }
+    // Vertical : dx = 0, on garde dy.
+    return Offset(last.dx, cur.dy);
   }
 
   /// Termine le tracé : prompt pour nommer la pièce puis crée le RoomShape
@@ -7694,7 +7696,7 @@ class _FreeDrawBanner extends StatelessWidget {
               icon: Icons.square_foot,
               tooltip: orthoLock
                   ? 'Angles libres'
-                  : 'Forcer angles à 45°',
+                  : 'Forcer horizontal/vertical',
               active: orthoLock,
               onTap: onToggleOrtho,
             ),
