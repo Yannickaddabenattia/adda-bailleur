@@ -1874,7 +1874,7 @@ class _DrawerViewState extends State<_DrawerView> {
 
   /// Contraint le segment courant à un multiple de 45° par rapport au sommet
   /// précédent. Activable depuis la bannière du mode tracé.
-  bool _freeDrawOrthoLock = true;
+  bool _freeDrawOrthoLock = false;
 
   /// Rayon (en proportion du canvas) autour du premier sommet où un tap
   /// déclenche la fermeture automatique du polygone.
@@ -4875,7 +4875,7 @@ class _DrawerViewState extends State<_DrawerView> {
       _freeDrawMode = true;
       _freeDrawPoints.clear();
       _freeDrawHover = null;
-      _freeDrawOrthoLock = true;
+      _freeDrawOrthoLock = false;
       _annotateMode = false;
       widget.onSelect(null);
     });
@@ -6909,7 +6909,61 @@ class _FreeDrawPreviewPainter extends CustomPainter {
     if (hover != null && points.isNotEmpty) {
       _paintSegmentLength(canvas, points.last, hover!, toPx,
           accent: willClose);
+      _paintOrientationHint(canvas, points.last, hover!, toPx);
     }
+  }
+
+  /// Affiche un petit badge "↔ Horizontal" ou "↕ Vertical" près du curseur
+  /// quand le segment d'aperçu est aligné sur un axe (à ~2° près). Aide
+  /// l'utilisateur à tracer des murs droits sans contrainte forcée.
+  void _paintOrientationHint(
+      Canvas canvas, Offset a, Offset b, Offset Function(Offset) toPx) {
+    final dx = b.dx - a.dx;
+    final dy = b.dy - a.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len < 0.01) return;
+    final angle = math.atan2(dy, dx);
+    // Aligné si l'angle est à ~2° (0.035 rad) près d'un multiple de π/2.
+    final modPi2 = angle.abs() % (math.pi / 2);
+    final delta = math.min(modPi2, math.pi / 2 - modPi2);
+    if (delta > 0.035) return;
+    final isHorizontal = dy.abs() < dx.abs();
+    final label = isHorizontal ? '↔ Horizontal' : '↕ Vertical';
+    final tp = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF134E4A),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final cursorPx = toPx(b);
+    // Place le badge au-dessus à droite du curseur.
+    final center = Offset(cursorPx.dx + 22 + tp.width / 2,
+        cursorPx.dy - 16 - tp.height / 2);
+    final rect = Rect.fromCenter(
+      center: center,
+      width: tp.width + 12,
+      height: tp.height + 6,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+      Paint()..color = const Color(0xFFCCFBF1).withValues(alpha: 0.96),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(6)),
+      Paint()
+        ..color = const Color(0xFF14B8A6)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2,
+    );
+    tp.paint(
+      canvas,
+      Offset(center.dx - tp.width / 2, center.dy - tp.height / 2),
+    );
   }
 
   void _paintSegmentLength(
