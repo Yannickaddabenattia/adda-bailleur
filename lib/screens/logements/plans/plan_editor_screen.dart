@@ -6913,22 +6913,20 @@ class _FreeDrawPreviewPainter extends CustomPainter {
     }
   }
 
-  /// Affiche un petit badge "↔ Horizontal" ou "↕ Vertical" près du curseur
-  /// quand le segment d'aperçu est aligné sur un axe (à ~2° près). Aide
-  /// l'utilisateur à tracer des murs droits sans contrainte forcée.
+  /// Badge précis au curseur affichant l'angle exact du segment d'aperçu
+  /// en degrés (2 décimales, sans tolérance ni snap). À l'utilisateur de
+  /// viser 0,00° / 45,00° / 90,00° s'il veut un alignement parfait.
   void _paintOrientationHint(
       Canvas canvas, Offset a, Offset b, Offset Function(Offset) toPx) {
     final dx = b.dx - a.dx;
     final dy = b.dy - a.dy;
     final len = math.sqrt(dx * dx + dy * dy);
     if (len < 0.01) return;
-    final angle = math.atan2(dy, dx);
-    // Aligné si l'angle est à ~2° (0.035 rad) près d'un multiple de π/2.
-    final modPi2 = angle.abs() % (math.pi / 2);
-    final delta = math.min(modPi2, math.pi / 2 - modPi2);
-    if (delta > 0.035) return;
-    final isHorizontal = dy.abs() < dx.abs();
-    final label = isHorizontal ? '↔ Horizontal' : '↕ Vertical';
+    var deg = math.atan2(dy, dx) * 180 / math.pi;
+    if (deg < 0) deg += 180;
+    if (deg >= 180) deg -= 180;
+    final label = '${deg.toStringAsFixed(2).replaceAll('.', ',')} °';
+
     final tp = TextPainter(
       text: TextSpan(
         text: label,
@@ -6941,7 +6939,6 @@ class _FreeDrawPreviewPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
     final cursorPx = toPx(b);
-    // Place le badge au-dessus à droite du curseur.
     final center = Offset(cursorPx.dx + 22 + tp.width / 2,
         cursorPx.dy - 16 - tp.height / 2);
     final rect = Rect.fromCenter(
