@@ -106,6 +106,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   _SortMode _sort = _SortMode.recent;
   String _query = '';
   late final TextEditingController _searchCtrl;
+  String? _locataireFilter; // null = tous, sinon id du locataire choisi
 
   @override
   void initState() {
@@ -196,6 +197,55 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 8),
+                // Filtre par locataire : "Tous" + 1 pill par locataire ayant
+                // au moins 1 document. Compte les documents par locataire
+                // après filtrage par type pour rester cohérent.
+                Builder(builder: (_) {
+                  final countsByTenant = <String, int>{};
+                  for (final e in entries) {
+                    if (_kindFilter == _DocFilter.quittances &&
+                        e.kind != _DocKind.quittance) continue;
+                    if (_kindFilter == _DocFilter.edl &&
+                        e.kind != _DocKind.edl) continue;
+                    countsByTenant.update(
+                      e.locataireId,
+                      (v) => v + 1,
+                      ifAbsent: () => 1,
+                    );
+                  }
+                  final tenantsWithDocs = locataires
+                      .where((l) => countsByTenant.containsKey(l.id))
+                      .toList()
+                    ..sort((a, b) => a.fullName.compareTo(b.fullName));
+                  return SizedBox(
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _FilterPill(
+                          label: 'Tous locataires · ${entries.length}',
+                          icon: Icons.groups_outlined,
+                          selected: _locataireFilter == null,
+                          onTap: () =>
+                              setState(() => _locataireFilter = null),
+                        ),
+                        const SizedBox(width: 8),
+                        for (final l in tenantsWithDocs) ...[
+                          _FilterPill(
+                            label:
+                                '${l.fullName} · ${countsByTenant[l.id]}',
+                            icon: Icons.person_outline,
+                            selected: _locataireFilter == l.id,
+                            onTap: () =>
+                                setState(() => _locataireFilter = l.id),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
                 const SizedBox(height: 14),
                 _SortRow(
                   sort: _sort,
@@ -329,6 +379,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         return false;
       }
       if (_kindFilter == _DocFilter.edl && e.kind != _DocKind.edl) return false;
+      if (_locataireFilter != null && e.locataireId != _locataireFilter) {
+        return false;
+      }
       if (_query.trim().isNotEmpty) {
         final q = _query.trim().toLowerCase();
         if (!e.title.toLowerCase().contains(q) &&
