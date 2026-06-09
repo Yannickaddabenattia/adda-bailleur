@@ -1,8 +1,11 @@
-name: Build & Release
+name: Build & Release (Linux)
 
+# La distribution GitHub Releases est réservée à la version LINUX.
+# (Android → Google Play, iOS → App Store ; non publiés ici.)
+#
 # Déclenché en poussant un tag de version (ex. `git tag v1.1.0 && git push --tags`)
-# ou manuellement (onglet Actions → Run workflow). Sur un tag, les binaires
-# sont publiés automatiquement dans GitHub Releases.
+# ou manuellement (onglet Actions → Run workflow). Sur un tag, le bundle Linux
+# est publié automatiquement dans GitHub Releases.
 on:
   push:
     tags:
@@ -16,56 +19,6 @@ env:
   FLUTTER_VERSION: '3.41.6'
 
 jobs:
-  # ─────────────────────────── Android (APK) ───────────────────────────
-  android:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      # Reconstitue la signature release depuis les secrets (si configurés).
-      # Sans secret → l'APK est signé en debug (build.gradle.kts gère le repli).
-      # Secrets à créer dans Settings → Secrets and variables → Actions :
-      #   ANDROID_KEYSTORE_BASE64  (base64 du adda-release.jks)
-      #   ANDROID_STORE_PASSWORD, ANDROID_KEY_PASSWORD, ANDROID_KEY_ALIAS
-      - name: Prepare release signing
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > android/adda-release.jks
-            {
-              echo "storePassword=$STORE_PASSWORD"
-              echo "keyPassword=$KEY_PASSWORD"
-              echo "keyAlias=$KEY_ALIAS"
-              echo "storeFile=../adda-release.jks"
-            } > android/key.properties
-            echo "Signature release configurée."
-          else
-            echo "Aucun keystore en secret → APK signé en debug."
-          fi
-
-      - run: flutter pub get
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
-
-  # ─────────────────────────── Linux (bundle) ──────────────────────────
   linux:
     name: Build Linux x64
     runs-on: ubuntu-latest
@@ -93,22 +46,19 @@ jobs:
           path: adda-bailleur-linux-x64.tar.gz
           if-no-files-found: error
 
-  # ─────────────────────────── Release (sur tag) ───────────────────────
   release:
-    name: Publish GitHub Release
-    needs: [android, linux]
+    name: Publish GitHub Release (Linux)
+    needs: [linux]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: Rename artifacts with version tag
+          name: linux-bundle
+          path: dist
+      - name: Rename with version tag
         run: |
-          mkdir -p dist
-          cp artifacts/android-apk/app-release.apk \
-             "dist/adda-bailleur-${{ github.ref_name }}.apk"
-          cp artifacts/linux-bundle/adda-bailleur-linux-x64.tar.gz \
+          mv dist/adda-bailleur-linux-x64.tar.gz \
              "dist/adda-bailleur-${{ github.ref_name }}-linux-x64.tar.gz"
       - uses: softprops/action-gh-release@v2
         with:
