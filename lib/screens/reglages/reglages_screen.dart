@@ -7,6 +7,7 @@ import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
 import '../backup/backup_screen.dart';
 import '../share/share_with_tenant_screen.dart';
+import 'confidentialite_screen.dart';
 
 class ReglagesScreen extends StatelessWidget {
   const ReglagesScreen({super.key});
@@ -89,6 +90,22 @@ class ReglagesScreen extends StatelessWidget {
           _SectionLabel('À PROPOS'),
           _Card(
             children: [
+              ListTile(
+                leading: const Icon(Icons.lock_outline_rounded,
+                    color: AppColors.success),
+                title: const Text('Confidentialité'),
+                subtitle: Text(
+                  '100 % local · aucune donnée envoyée',
+                  style: TextStyle(color: context.textSecondaryColor),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ConfidentialiteScreen(),
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: context.dividerColor),
               ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('Version'),
