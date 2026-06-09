@@ -61,3 +61,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Storage Access Framework : écriture conforme Play Store dans un dossier
+    // choisi par l'utilisateur (sauvegardes cloud).
+    implementation("androidx.documentfile:documentfile:1.0.1")
+}

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/storage/android_saf.dart';
 import '../../core/storage/secure_folder.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auto_backup_service.dart';
@@ -52,7 +53,29 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
     super.dispose();
   }
 
+  /// Affiche un dossier de façon lisible (décode l'URI SAF Android en nom).
+  String _folderLabel(String pathOrUri) {
+    if (pathOrUri.startsWith('content://')) {
+      final decoded = Uri.decodeFull(pathOrUri);
+      final colon = decoded.lastIndexOf(':');
+      final name = colon >= 0 ? decoded.substring(colon + 1) : decoded;
+      return name.isEmpty ? 'Dossier sélectionné' : name;
+    }
+    return pathOrUri;
+  }
+
   Future<void> _pickFolder() async {
+    // Android : Storage Access Framework (conforme Play Store) — l'URI
+    // d'arborescence sert de "chemin", la permission est persistante.
+    if (Platform.isAndroid) {
+      final picked = await AndroidSaf.pickDirectory();
+      if (picked == null) return;
+      setState(() {
+        _pickedFolder = picked.uri;
+        _pickedBookmark = '';
+      });
+      return;
+    }
     // Sur iOS/macOS, on passe par le sélecteur natif qui crée un bookmark
     // security-scoped (accès persistant au dossier après relance). Ailleurs,
     // sélection classique par chemin.
@@ -228,7 +251,9 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _pickedFolder ?? 'Choisir un dossier…',
+                        _pickedFolder == null
+                            ? 'Choisir un dossier…'
+                            : _folderLabel(_pickedFolder!),
                         style: TextStyle(
                           fontSize: 13,
                           color: _pickedFolder == null

@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/storage/android_saf.dart';
 import '../core/storage/app_secure_storage.dart';
 import '../core/storage/local_database.dart';
 import '../core/storage/secure_folder.dart';
@@ -300,8 +301,9 @@ class AutoBackupService extends ChangeNotifier {
     required String passphrase,
     String? bookmark,
   }) async {
-    final dir = Directory(folderPath);
-    if (!dir.existsSync()) {
+    // Sur Android, folderPath est une URI SAF (pas un chemin) : l'accès a déjà
+    // été validé par le sélecteur. Ailleurs, on vérifie l'existence du dossier.
+    if (!Platform.isAndroid && !Directory(folderPath).existsSync()) {
       throw ArgumentError('Le dossier n\'existe pas : $folderPath');
     }
     await LocalDatabase.settingsBox.put(_kFolderPath, folderPath);
@@ -410,9 +412,16 @@ class AutoBackupService extends ChangeNotifier {
       }
       final folderPath = resolvedPath ?? storedFolderPath;
       final svc = BackupService();
-      // Vérifier le dossier
-      final dir = Directory(folderPath);
-      if (!dir.existsSync()) {
+
+      // Vérifie l'accès au dossier (SAF sur Android, chemin ailleurs).
+      if (Platform.isAndroid) {
+        if (!await AndroidSaf.isAccessible(folderPath)) {
+          _state = AutoBackupState.error;
+          _lastError = 'Dossier inaccessible (autorisation perdue)';
+          notifyListeners();
+          return AutoBackupResult.error(_lastError!);
+        }
+      } else if (!Directory(folderPath).existsSync()) {
         _state = AutoBackupState.error;
         _lastError = 'Dossier introuvable : $folderPath';
         notifyListeners();
@@ -429,24 +438,30 @@ class AutoBackupService extends ChangeNotifier {
         return const AutoBackupResult.skipped(reason: 'Aucun changement');
       }
 
-      // Écrit le .adls daté, préfixé de l'identifiant d'appareil : ce tag
-      // permet aux autres appareils de reconnaître nos fichiers et de
-      // détecter les leurs (synchro multi-appareils).
+      // Fichier daté, préfixé de l'identifiant d'appareil (détection
+      // multi-appareils).
       final now = DateTime.now();
       final myTag = _shortDeviceTag(await deviceId());
       final fileName = BackupFileName.build(deviceTag: myTag, now: now);
-      final targetPath = '$folderPath${Platform.pathSeparator}$fileName';
 
-      // Génère le bundle chiffré via BackupService (écrit dans Documents).
+      // Génère le bundle chiffré (écrit dans Documents), puis l'écrit dans le
+      // dossier cible : SAF (DocumentFile) sur Android, fichier atomique
+      // (tmp + rename) ailleurs.
       final tempFile = await svc.exportEncrypted(passphrase: passphrase);
-      // Déplace/copie vers le dossier cible (atomique : tmp + rename).
-      final tmpTarget = File('$targetPath.tmp');
-      await tempFile.copy(tmpTarget.path);
-      await tmpTarget.rename(targetPath);
-      // Supprime le fichier source temporaire (Documents) — il a été archivé.
+      final bytes = await tempFile.readAsBytes();
       try {
         await tempFile.delete();
       } catch (_) {/* pas critique */}
+
+      final String targetPath;
+      if (Platform.isAndroid) {
+        targetPath = await AndroidSaf.writeFile(folderPath, fileName, bytes);
+      } else {
+        targetPath = '$folderPath${Platform.pathSeparator}$fileName';
+        final tmpTarget = File('$targetPath.tmp');
+        await tmpTarget.writeAsBytes(bytes, flush: true);
+        await tmpTarget.rename(targetPath);
+      }
 
       await LocalDatabase.settingsBox.put(_kLastAtIso, now.toIso8601String());
       await LocalDatabase.settingsBox.put(_kLastHash, newHash);
@@ -477,12 +492,21 @@ class AutoBackupService extends ChangeNotifier {
   /// Rotation pyramidale : garde 7 quotidiens, 4 hebdo, 12 mensuels, 1/an.
   /// Supprime les fichiers .adls excédentaires. La date est lue dans le nom
   /// via [BackupFileName] (robuste au préfixe device et aux deux formats).
-  Future<void> _pruneOldBackups(String folderPath) async {
-    final dir = Directory(folderPath);
-    final parsed = <(File, DateTime)>[];
-    for (final f in dir.listSync().whereType<File>()) {
-      final info = BackupFileName.tryParse(f.uri.pathSegments.last);
-      if (info != null) parsed.add((f, info.dateTime));
+  Future<void> _pruneOldBackups(String folder) async {
+    // (nom de fichier, date). On raisonne par NOM pour rester commun à SAF
+    // (Android, pas de chemin) et au système de fichiers (iOS/macOS/desktop).
+    final parsed = <(String, DateTime)>[];
+    if (Platform.isAndroid) {
+      for (final f in await AndroidSaf.listFiles(folder)) {
+        final info = BackupFileName.tryParse(f.name);
+        if (info != null) parsed.add((f.name, info.dateTime));
+      }
+    } else {
+      for (final f in Directory(folder).listSync().whereType<File>()) {
+        final name = f.uri.pathSegments.last;
+        final info = BackupFileName.tryParse(name);
+        if (info != null) parsed.add((name, info.dateTime));
+      }
     }
     if (parsed.isEmpty) return;
     parsed.sort((a, b) => b.$2.compareTo(a.$2)); // plus récent d'abord
@@ -497,7 +521,7 @@ class AutoBackupService extends ChangeNotifier {
       final day = now.subtract(Duration(days: d));
       for (final p in parsed) {
         if (sameDay(p.$2, day)) {
-          keep.add(p.$1.path);
+          keep.add(p.$1);
           break;
         }
       }
@@ -511,7 +535,7 @@ class AutoBackupService extends ChangeNotifier {
       final nextMonday = monday.add(const Duration(days: 7));
       for (final p in parsed) {
         if (!p.$2.isBefore(monday) && p.$2.isBefore(nextMonday)) {
-          keep.add(p.$1.path);
+          keep.add(p.$1);
           break;
         }
       }
@@ -522,7 +546,7 @@ class AutoBackupService extends ChangeNotifier {
       final ref = DateTime(now.year, now.month - m, 1);
       for (final p in parsed) {
         if (p.$2.year == ref.year && p.$2.month == ref.month) {
-          keep.add(p.$1.path);
+          keep.add(p.$1);
           break;
         }
       }
@@ -531,17 +555,20 @@ class AutoBackupService extends ChangeNotifier {
     // Une sauvegarde par année (la plus récente)
     final byYear = <int, String>{};
     for (final p in parsed) {
-      byYear.putIfAbsent(p.$2.year, () => p.$1.path);
+      byYear.putIfAbsent(p.$2.year, () => p.$1);
     }
     keep.addAll(byYear.values);
 
     // Supprime tout ce qui n'est pas dans keep
     for (final p in parsed) {
-      if (!keep.contains(p.$1.path)) {
-        try {
-          await p.$1.delete();
-        } catch (_) {/* pas critique */}
-      }
+      if (keep.contains(p.$1)) continue;
+      try {
+        if (Platform.isAndroid) {
+          await AndroidSaf.deleteFile(folder, p.$1);
+        } else {
+          await File('$folder${Platform.pathSeparator}${p.$1}').delete();
+        }
+      } catch (_) {/* pas critique */}
     }
   }
 
@@ -559,23 +586,33 @@ class AutoBackupService extends ChangeNotifier {
         resolvedPath = await SecureFolder.startAccess(bookmark);
       }
       final folder = resolvedPath ?? storedFolder;
-      final dir = Directory(folder);
-      if (!dir.existsSync()) return;
+
+      final Iterable<String> names;
+      if (Platform.isAndroid) {
+        if (!await AndroidSaf.isAccessible(folder)) return;
+        names = (await AndroidSaf.listFiles(folder)).map((f) => f.name);
+      } else {
+        if (!Directory(folder).existsSync()) return;
+        names = Directory(folder)
+            .listSync()
+            .whereType<File>()
+            .map((f) => f.uri.pathSegments.last);
+      }
 
       final myTag = _shortDeviceTag(await deviceId());
       final iso = LocalDatabase.settingsBox.get(_kLastImportedForeignIso);
       final since = iso != null ? DateTime.tryParse(iso) : null;
-
-      final names =
-          dir.listSync().whereType<File>().map((f) => f.uri.pathSegments.last);
       final found =
           ForeignBackupInfo.newestForeign(names, myTag: myTag, since: since);
 
-      // Reconstituer le chemin absolu (le nom seul ne suffit pas pour lire).
+      // Sur Android on garde le NOM (lecture via SAF) ; ailleurs le chemin
+      // absolu (lecture dart:io).
       final newPending = found == null
           ? null
           : ForeignBackupInfo(
-              fileName: '$folder${Platform.pathSeparator}${found.fileName}',
+              fileName: Platform.isAndroid
+                  ? found.fileName
+                  : '$folder${Platform.pathSeparator}${found.fileName}',
               deviceTag: found.deviceTag,
               dateTime: found.dateTime,
             );
@@ -611,11 +648,24 @@ class AutoBackupService extends ChangeNotifier {
       if (bookmark != null) {
         resolvedPath = await SecureFolder.startAccess(bookmark);
       }
-      final file = File(pending.fileName);
-      if (!file.existsSync()) {
-        return const AutoBackupResult.error('Fichier introuvable');
+      final Uint8List bytes;
+      if (Platform.isAndroid) {
+        final folder = folderPath;
+        if (folder == null) {
+          return const AutoBackupResult.error('Dossier non configuré');
+        }
+        final read = await AndroidSaf.readFile(folder, pending.fileName);
+        if (read == null) {
+          return const AutoBackupResult.error('Fichier introuvable');
+        }
+        bytes = read;
+      } else {
+        final file = File(pending.fileName);
+        if (!file.existsSync()) {
+          return const AutoBackupResult.error('Fichier introuvable');
+        }
+        bytes = await file.readAsBytes();
       }
-      final bytes = await file.readAsBytes();
       await BackupService()
           .importEncrypted(bytes: bytes, passphrase: passphrase);
       await LocalDatabase.settingsBox
@@ -642,10 +692,12 @@ class AutoBackupService extends ChangeNotifier {
       _state = AutoBackupState.disabled;
       return;
     }
-    // Avec un bookmark, l'accès réel se vérifie à la sauvegarde (le dossier
-    // peut ne pas être « stat-able » sans résoudre le scope sécurisé). Sans
-    // bookmark, on vérifie l'existence du chemin.
-    if (folderBookmark == null && !Directory(folder).existsSync()) {
+    // Sur Android (SAF) et avec un bookmark, l'accès réel se vérifie à la
+    // sauvegarde (le dossier n'est pas « stat-able » via Directory). Sinon,
+    // on vérifie l'existence du chemin.
+    if (!Platform.isAndroid &&
+        folderBookmark == null &&
+        !Directory(folder).existsSync()) {
       _state = AutoBackupState.error;
       _lastError = 'Dossier inaccessible : $folder';
       return;
