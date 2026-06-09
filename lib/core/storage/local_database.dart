@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../models/credit_immobilier.dart';
 import '../../models/depense.dart';
@@ -144,6 +147,20 @@ class LocalDatabase {
 
     await Hive.initFlutter();
 
+    // Avant toute ouverture de box : appliquer une restauration éventuellement
+    // demandée, puis créer une sauvegarde de sécurité si l'app a changé de
+    // version (les fichiers .hive sont alors au repos). Ne doit JAMAIS bloquer
+    // le démarrage.
+    String? docsPath;
+    try {
+      docsPath = (await getApplicationDocumentsDirectory()).path;
+      await _applyPendingRestore(docsPath);
+      await snapshotBeforeUpgrade(
+        dirPath: docsPath,
+        currentVersion: AppConstants.appVersion,
+      );
+    } catch (_) {/* tolérant aux erreurs : la sécurité ne doit pas casser l'app */}
+
     _registerAdapter(UserProfileAdapter());
     _registerAdapter(LogementAdapter());
     _registerAdapter(LocataireAdapter());
@@ -246,6 +263,110 @@ class LocalDatabase {
     _initialized = true;
 
     await _migrateContratsLocataireToLogement();
+
+    // Migrations passées sans encombre → on mémorise la version courante.
+    if (docsPath != null) {
+      try {
+        await recordCurrentVersion(docsPath, AppConstants.appVersion);
+      } catch (_) {/* non bloquant */}
+    }
+  }
+
+  // ───────────────────── Sauvegardes de sécurité (avant MAJ) ─────────────────
+
+  static const String _versionMarker = '.adda_data_version';
+  static const String _pendingRestoreMarker = '.adda_pending_restore';
+  static const String _snapshotsDir = 'pre_update_backups';
+
+  /// Copie les fichiers Hive (.hive) dans un dossier horodaté AVANT migration,
+  /// si la version stockée diffère de [currentVersion]. Ne met PAS à jour le
+  /// marqueur de version (fait seulement après des migrations réussies).
+  /// Statique et sans I/O cachée pour être testable directement.
+  static Future<Directory?> snapshotBeforeUpgrade({
+    required String dirPath,
+    required String currentVersion,
+    String? nowStamp,
+    int keepLast = 3,
+  }) async {
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return null;
+    final marker = File('$dirPath/$_versionMarker');
+    final last = marker.existsSync() ? marker.readAsStringSync().trim() : null;
+    if (last == null || last == currentVersion) return null;
+
+    final hiveFiles = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.hive'))
+        .toList();
+    if (hiveFiles.isEmpty) return null;
+
+    final stamp = nowStamp ??
+        DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final snapDir = Directory('$dirPath/$_snapshotsDir/${stamp}__v$last');
+    await snapDir.create(recursive: true);
+    for (final f in hiveFiles) {
+      await f.copy('${snapDir.path}/${f.uri.pathSegments.last}');
+    }
+    await _prunePreUpdateSnapshots(dirPath, keepLast);
+    return snapDir;
+  }
+
+  static Future<void> _prunePreUpdateSnapshots(
+      String dirPath, int keepLast) async {
+    final root = Directory('$dirPath/$_snapshotsDir');
+    if (!root.existsSync()) return;
+    final snaps = root.listSync().whereType<Directory>().toList()
+      ..sort((a, b) => b.path.compareTo(a.path)); // horodatage ISO → récent d'abord
+    for (var i = keepLast; i < snaps.length; i++) {
+      try {
+        await snaps[i].delete(recursive: true);
+      } catch (_) {/* non critique */}
+    }
+  }
+
+  /// Mémorise [version] comme dernière version ayant démarré avec succès.
+  static Future<void> recordCurrentVersion(
+      String dirPath, String version) async {
+    await File('$dirPath/$_versionMarker').writeAsString(version, flush: true);
+  }
+
+  /// Sauvegardes de sécurité disponibles (de la plus récente à la plus ancienne).
+  static Future<List<Directory>> listPreUpdateSnapshots() async {
+    if (!_initialized) return [];
+    final docs = await getApplicationDocumentsDirectory();
+    final root = Directory('${docs.path}/$_snapshotsDir');
+    if (!root.existsSync()) return [];
+    return root.listSync().whereType<Directory>().toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+  }
+
+  /// Programme la restauration d'un snapshot : elle sera appliquée en sécurité
+  /// au PROCHAIN démarrage (avant l'ouverture des box), puis l'app redémarre.
+  static Future<void> requestRestore(String snapshotDirPath) async {
+    final docs = await getApplicationDocumentsDirectory();
+    await File('${docs.path}/$_pendingRestoreMarker')
+        .writeAsString(snapshotDirPath, flush: true);
+  }
+
+  /// Applique une restauration programmée : recopie les .hive du snapshot
+  /// par-dessus les fichiers vivants (boxes encore fermées), puis efface le
+  /// marqueur. Sûr car exécuté avant toute ouverture de box.
+  static Future<void> _applyPendingRestore(String dirPath) async {
+    final marker = File('$dirPath/$_pendingRestoreMarker');
+    if (!marker.existsSync()) return;
+    final snapPath = marker.readAsStringSync().trim();
+    final snapDir = Directory(snapPath);
+    if (snapDir.existsSync()) {
+      for (final f in snapDir.listSync().whereType<File>()) {
+        if (!f.path.endsWith('.hive')) continue;
+        final name = f.uri.pathSegments.last;
+        await f.copy('$dirPath/$name');
+      }
+    }
+    try {
+      await marker.delete();
+    } catch (_) {}
   }
 
   /// Migration : les contrats de bail importés sur la fiche locataire sont

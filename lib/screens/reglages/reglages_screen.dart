@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
 import '../backup/backup_screen.dart';
+import '../backup/pre_update_backups_screen.dart';
 import '../share/share_with_tenant_screen.dart';
 import 'cloud_sync_screen.dart';
 import 'confidentialite_screen.dart';
@@ -81,6 +82,21 @@ class ReglagesScreen extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const CloudSyncScreen()),
+                ),
+              ),
+              Divider(height: 1, color: context.dividerColor),
+              ListTile(
+                leading: Icon(Icons.restore, color: Colors.orange.shade700),
+                title: const Text('Sauvegardes de sécurité'),
+                subtitle: Text(
+                  'Points de restauration avant mise à jour',
+                  style: TextStyle(color: context.textSecondaryColor),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PreUpdateBackupsScreen(),
+                  ),
                 ),
               ),
               Divider(height: 1, color: context.dividerColor),
