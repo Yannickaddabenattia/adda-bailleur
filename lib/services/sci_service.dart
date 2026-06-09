@@ -68,14 +68,11 @@ class CalculSCIIS {
 /// Les SCI à l'IR sont traitées par `FiscaliteService` comme des biens
 /// transparents (intégrées au foyer fiscal personnel).
 class SCIService extends ChangeNotifier {
-  /// Taux global du Prélèvement Forfaitaire Unique sur dividendes SCI-IS.
-  /// - Jusqu'en 2025 : 30 % (12,8 % IR + 17,2 % PS).
-  /// - Dès 2026 : 31,4 % (12,8 % IR + 18,6 % PS, LFSS 2026 — hausse CSG
-  ///   « contribution autonomie »).
-  static double tauxPFUPour(int year) {
-    if (year < 2026) return 0.30;
-    return 0.314;
-  }
+  /// Taux global du Prélèvement Forfaitaire Unique sur dividendes SCI-IS :
+  /// 30 % (12,8 % IR + 17,2 % PS). Stable, aucune hausse instaurée à ce jour.
+  /// Le paramètre [year] est conservé pour gérer une éventuelle évolution
+  /// future du barème.
+  static double tauxPFUPour(int year) => 0.30;
 
   /// Alias rétro-compatible. À éviter pour les nouveaux calculs.
   @Deprecated('Utiliser tauxPFUPour(year) pour gérer le multi-années')

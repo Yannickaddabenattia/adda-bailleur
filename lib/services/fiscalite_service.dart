@@ -140,9 +140,9 @@ class BaremeIR2026 {
   };
 
   /// Barème PS pour revenus meublés : LMNP, meublé de tourisme, bail mobilité.
-  /// LFSS 2026 : CSG relevée de 9,2 % à 10,6 % (« contribution autonomie »),
-  /// rétroactive sur les revenus 2025 déclarés en 2026.
-  /// Clé = année des revenus.
+  /// Taux identique aux revenus fonciers : 17,2 % (CSG 9,2 % + CRDS 0,5 % +
+  /// prélèvement de solidarité 7,5 %) depuis 2018. Aucune divergence
+  /// foncier/meublé n'a été instaurée à ce jour. Clé = année des revenus.
   static const Map<int, PrelevementsSociaux> _psMeuble = {
     2018: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
     2019: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
@@ -151,8 +151,8 @@ class BaremeIR2026 {
     2022: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
     2023: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
     2024: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
-    2025: PrelevementsSociaux(csg: 0.106, crds: 0.005, solidarite: 0.075),
-    2026: PrelevementsSociaux(csg: 0.106, crds: 0.005, solidarite: 0.075),
+    2025: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
+    2026: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
   };
 
   /// Détail PS sur revenus fonciers pour l'année [year].
