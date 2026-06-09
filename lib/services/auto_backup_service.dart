@@ -106,6 +106,11 @@ class AutoBackupService extends ChangeNotifier {
   Timer? _debounceTimer;
   final List<StreamSubscription> _boxSubs = [];
 
+  /// Verrou anti-concurrence : empêche deux écritures simultanées (ex. bouton
+  /// « Sauvegarder maintenant » pendant qu'un backup debouncé se déclenche,
+  /// ou onResume + debounce) qui courraient sur le même fichier `.tmp`.
+  bool _backupInProgress = false;
+
   AutoBackupService() {
     _refreshState();
     _attachBoxWatchers();
@@ -258,6 +263,11 @@ class AutoBackupService extends ChangeNotifier {
 
   Future<AutoBackupResult> _doBackup(
       String folderPath, String passphrase) async {
+    if (_backupInProgress) {
+      return const AutoBackupResult.skipped(
+          reason: 'Sauvegarde déjà en cours');
+    }
+    _backupInProgress = true;
     _state = AutoBackupState.inProgress;
     notifyListeners();
     try {
@@ -287,7 +297,8 @@ class AutoBackupService extends ChangeNotifier {
           '-${now.month.toString().padLeft(2, '0')}'
           '-${now.day.toString().padLeft(2, '0')}'
           '_${now.hour.toString().padLeft(2, '0')}'
-          '${now.minute.toString().padLeft(2, '0')}';
+          '${now.minute.toString().padLeft(2, '0')}'
+          '${now.second.toString().padLeft(2, '0')}';
       final fileName = 'addalocation_$stamp.adls';
       final targetPath = '$folderPath${Platform.pathSeparator}$fileName';
 
@@ -320,6 +331,8 @@ class AutoBackupService extends ChangeNotifier {
       _lastError = e.toString();
       notifyListeners();
       return AutoBackupResult.error(_lastError!);
+    } finally {
+      _backupInProgress = false;
     }
   }
 
