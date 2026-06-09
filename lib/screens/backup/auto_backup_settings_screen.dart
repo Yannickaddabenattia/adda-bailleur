@@ -28,6 +28,9 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
   bool _obscure = true;
   bool _busy = false;
   String? _testMessage;
+  // L'app peut se croire « activée » (drapeau Hive) mais avoir perdu la
+  // passphrase du trousseau : on réaffiche alors le champ pour la ressaisir.
+  bool _passphraseMissing = false;
 
   @override
   void initState() {
@@ -35,6 +38,11 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
     final svc = context.read<AutoBackupService>();
     _pickedFolder = svc.folderPath;
     _pickedBookmark = svc.folderBookmark;
+    if (svc.isEnabled) {
+      svc.hasPassphrase().then((has) {
+        if (mounted) setState(() => _passphraseMissing = !has);
+      });
+    }
   }
 
   @override
@@ -83,6 +91,7 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
       if (!mounted) return;
       _passphraseCtrl.clear();
       _confirmCtrl.clear();
+      _passphraseMissing = false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sauvegarde automatique activée.')),
       );
@@ -252,7 +261,38 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
             // ─── 2. Passphrase ─────────────────────────────────────────
             const _SectionTitle('2. Mot de passe de chiffrement'),
             const SizedBox(height: 8),
-            if (!isConfigured) ...[
+            if (!isConfigured || _passphraseMissing) ...[
+              if (_passphraseMissing) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border:
+                        Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: Colors.orange.shade800, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Le mot de passe n\'a pas pu être retrouvé dans le '
+                          'trousseau. Ressaisissez-le (le même qu\'à l\'origine) '
+                          'pour réactiver la sauvegarde.',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade900,
+                              height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Form(
                 key: _formKey,
                 child: Column(
@@ -330,7 +370,11 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
               FilledButton.icon(
                 onPressed: _busy ? null : _saveConfig,
                 icon: const Icon(Icons.cloud_done_outlined),
-                label: Text(_busy ? 'Activation…' : 'Activer la sauvegarde automatique'),
+                label: Text(_busy
+                    ? 'Activation…'
+                    : (_passphraseMissing
+                        ? 'Enregistrer le mot de passe'
+                        : 'Activer la sauvegarde automatique')),
               ),
             ] else ...[
               Container(

@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/export.dart';
 
+import '../core/storage/app_secure_storage.dart';
 import '../core/storage/local_database.dart';
 
 /// Calcul Argon2id `(motDePasse, sel) → 32 octets`. Fonction top-level pour
@@ -42,7 +42,7 @@ class MasterKeyService extends ChangeNotifier {
   static const String _kKdf = 'master_pw_kdf';
   static const String _ksPassword = 'cloud_sync_master_password';
 
-  static const FlutterSecureStorage _secure = FlutterSecureStorage();
+  static const _secure = appSecureStorage;
 
   /// Argon2id(password, salt) → 32 octets. Pur et déterministe ; exécuté en
   /// isolate. Exposé pour les tests.

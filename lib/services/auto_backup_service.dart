@@ -4,9 +4,9 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/storage/app_secure_storage.dart';
 import '../core/storage/local_database.dart';
 import '../core/storage/secure_folder.dart';
 import 'backup_service.dart';
@@ -182,7 +182,7 @@ class AutoBackupService extends ChangeNotifier {
   // Secure storage key (passphrase chiffrée par l'OS)
   static const String _ksPassphrase = 'auto_backup_passphrase';
 
-  static const _secureStorage = FlutterSecureStorage();
+  static const _secureStorage = appSecureStorage;
   static const _debounce = Duration(minutes: 5);
   static const _watchInterval = Duration(seconds: 60);
 
@@ -332,6 +332,14 @@ class AutoBackupService extends ChangeNotifier {
   /// Récupère la passphrase mémorisée (null si non configurée).
   Future<String?> _readPassphrase() async {
     return _secureStorage.read(key: _ksPassphrase);
+  }
+
+  /// `true` si une passphrase est réellement présente dans le trousseau.
+  /// L'app peut se croire « activée » (drapeau Hive) tout en ayant perdu la
+  /// passphrase (ex. trousseau macOS) : ce cas doit permettre de la ressaisir.
+  Future<bool> hasPassphrase() async {
+    final p = await _readPassphrase();
+    return p != null && p.isNotEmpty;
   }
 
   /// Calcule le SHA-256 d'un payload sérialisé en JSON canonique.
