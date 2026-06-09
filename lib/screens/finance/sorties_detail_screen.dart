@@ -22,7 +22,8 @@ class SortiesDetailScreen extends StatelessWidget {
   /// (impôt avec foncier − impôt sans foncier).
   final double surplusIRFoncier;
 
-  /// Prélèvements sociaux (CSG + CRDS, 17,2 %) sur le revenu foncier de N-1.
+  /// Prélèvements sociaux (CSG + CRDS + solidarité) sur revenu foncier + LMNP de N-1.
+  /// Taux variables : foncier 17,2 % (LFSS 2026 inchangé), meublé 18,6 % dès 2025.
   final double prelevementsSociaux;
 
   const SortiesDetailScreen({
@@ -269,7 +270,7 @@ class _ImpotFoncierCard extends StatelessWidget {
                 _ImpotLine(
                   icon: Icons.percent_rounded,
                   label: 'Prélèvements sociaux',
-                  detail: 'CSG + CRDS · 17,2 %',
+                  detail: 'CSG + CRDS · 17,2 % à 18,6 %',
                   value: prelevementsSociaux,
                   money: money,
                 ),

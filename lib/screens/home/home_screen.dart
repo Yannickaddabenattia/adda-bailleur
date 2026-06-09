@@ -5,16 +5,19 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_card.dart';
+import '../../widgets/backup_status_badge.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
 import '../../services/credit_service.dart';
 import '../../services/depense_service.dart';
 import '../../services/etat_des_lieux_service.dart';
+import '../../services/fiscalite_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/contrat_bail_service.dart';
 import '../../services/diagnostic_service.dart';
 import '../../services/quittance_service.dart';
+import '../../services/sci_service.dart';
 import '../../services/user_service.dart';
 import '../../services/compta_export_service.dart';
 import '../../services/rappel_service.dart';
@@ -45,8 +48,10 @@ class HomeScreen extends StatelessWidget {
     final quittances = context.watch<QuittanceService>().all;
     final edls = context.watch<EtatDesLieuxService>().all;
     final contrats = context.watch<ContratBailService>().all;
-    final depenses = context.watch<DepenseService>().all;
-    final credits = context.watch<CreditService>().all;
+    final creditsSvc = context.watch<CreditService>();
+    final depensesSvc = context.watch<DepenseService>();
+    final fiscaliteSvc = context.watch<FiscaliteService>();
+    final sciSvc = context.watch<SCIService>();
 
     final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
     final now = DateTime.now();
@@ -63,26 +68,40 @@ class HomeScreen extends StatelessWidget {
         ? 0
         : ((occupiedCount / logements.length) * 100).round();
 
-    // Bilan net YTD (revenu encaissé - dépenses - crédits annualisés YTD)
+    // Bilan net annuel — aligné sur le tableau de bord Finance pour éviter
+    // toute divergence d'affichage. Mêmes règles :
+    //  - recettes dédoublonnées par (logement, mois) (colocataires ne sont
+    //    pas comptés en double)
+    //  - dépenses cumulées de l'année
+    //  - crédits via annualPaymentsForLogement (rachat + mois actifs)
+    //  - impôts fonciers N-1 (surplus IR + PS) + coût fiscal IS des SCI
     final year = now.year;
-    final revenuYTD = quittances
-        .where((q) => q.periodYear == year)
-        .fold<double>(0, (s, q) => s + q.total);
-    final depensesYTD = depenses
-        .where((d) => d.date.year == year)
-        .fold<double>(0, (s, d) => s + d.montant);
-    var creditsYTD = 0.0;
-    for (final c in credits) {
-      for (var m = 1; m <= now.month; m++) {
-        final dt = DateTime(year, m, 1);
-        if (dt.isBefore(DateTime(c.dateDebut.year, c.dateDebut.month, 1))) {
-          continue;
-        }
-        if (dt.isAfter(c.dateFin)) continue;
-        creditsYTD += c.mensualiteTotale;
+    var revenuYTD = 0.0;
+    for (final l in logements) {
+      final byMonth = <int, double>{};
+      for (final q in quittances.where(
+          (q) => q.logementId == l.id && q.periodYear == year)) {
+        final prev = byMonth[q.periodMonth];
+        if (prev == null || q.total > prev) byMonth[q.periodMonth] = q.total;
+      }
+      for (final v in byMonth.values) {
+        revenuYTD += v;
       }
     }
-    final bilanNet = revenuYTD - depensesYTD - creditsYTD;
+    var depensesYTD = 0.0;
+    var creditsYTD = 0.0;
+    for (final l in logements) {
+      depensesYTD += depensesSvc.totalForLogementYear(l.id, year);
+      creditsYTD += creditsSvc.annualPaymentsForLogement(l.id, year);
+    }
+    double impotFoncier = 0.0;
+    if (BaremeIR2026.aBaremePour(year - 1)) {
+      final c = fiscaliteSvc.calculer(year - 1);
+      impotFoncier = c.impotAdditionnelFoncierNet + c.prelevementsSociaux;
+    }
+    final impotSCI = sciSvc.totalCoutFiscalIS(year);
+    final sortiesYTD = depensesYTD + creditsYTD + impotFoncier + impotSCI;
+    final bilanNet = revenuYTD - sortiesYTD;
 
     // Première quittance à générer ce mois
     _PendingQuittance? alert;
@@ -376,6 +395,8 @@ class _Hero extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              const BackupStatusBadge(),
+              const SizedBox(width: 8),
               Container(
                 width: 38,
                 height: 38,

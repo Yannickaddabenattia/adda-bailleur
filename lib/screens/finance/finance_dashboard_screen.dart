@@ -147,10 +147,13 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
 
     // Impôts fonciers payés en année N pour les revenus de N-1.
     // Calcul global du foyer : surplus IR (impôt avec foncier - sans foncier)
-    // + prélèvements sociaux 17,2 %. Affiché uniquement quand on ne filtre
-    // pas sur un logement précis (la fiscalité est globale).
-    final calcFiscalAnneeNm1 =
-        _logementId == null ? fiscaliteSvc.calculer(_year - 1) : null;
+    // + prélèvements sociaux. Affiché uniquement quand on ne filtre pas sur
+    // un logement précis (la fiscalité est globale).
+    // Le barème IR doit exister pour l'année N-1 ; sinon on n'affiche rien.
+    CalculFiscalAnnuel? calcFiscalAnneeNm1;
+    if (_logementId == null && BaremeIR2026.aBaremePour(_year - 1)) {
+      calcFiscalAnneeNm1 = fiscaliteSvc.calculer(_year - 1);
+    }
     final surplusIRFoncier =
         calcFiscalAnneeNm1?.impotAdditionnelFoncierNet ?? 0.0;
     final prelevementsSociaux =

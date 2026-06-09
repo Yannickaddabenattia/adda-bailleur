@@ -22,12 +22,25 @@ class _FiscaliteScreenState extends State<FiscaliteScreen> {
   @override
   void initState() {
     super.initState();
-    _year = DateTime.now().year;
+    // Limite l'année initiale au dernier barème disponible. Sans ça,
+    // ouvrir l'écran en 2026+ levait `BaremeIRIndisponible` et plantait.
+    final now = DateTime.now().year;
+    final dispo = BaremeIR2026.anneesDisponibles;
+    _year = (dispo.isEmpty || now <= dispo.last) ? now : dispo.last;
   }
 
   @override
   Widget build(BuildContext context) {
     final svc = context.watch<FiscaliteService>();
+    // Sécurité : si l'année courante sort de la table de barème, on retombe
+    // proprement sur la plus récente disponible plutôt que de planter.
+    if (!BaremeIR2026.aBaremePour(_year)) {
+      return _IndisponibleScreen(
+        year: _year,
+        anneesDisponibles: BaremeIR2026.anneesDisponibles,
+        onPickYear: (y) => setState(() => _year = y),
+      );
+    }
     final calc = svc.calculer(_year);
     final settings = svc.settings;
     final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
@@ -378,10 +391,29 @@ class _ImpotCard extends StatelessWidget {
               label: 'Réduction Pinel / Denormandie',
               value: '− ${money.format(calc.reductionAppliquee)}',
             ),
-          _Row(
-            label: 'Prélèvements sociaux 17,2 %',
-            value: money.format(calc.prelevementsSociaux),
-          ),
+          // Affichage adaptatif des prélèvements sociaux selon le profil :
+          // - foncier uniquement → 1 ligne "PS 17,2 %"
+          // - meublé uniquement → 1 ligne "PS 18,6 %"
+          // - les deux → 2 sous-lignes détaillées
+          if (calc.psFoncier > 0 && calc.psMeuble > 0) ...[
+            _Row(
+              label: 'Prélèvements sociaux fonciers 17,2 %',
+              value: money.format(calc.psFoncier),
+            ),
+            _Row(
+              label: 'Prélèvements sociaux meublé 18,6 %',
+              value: money.format(calc.psMeuble),
+            ),
+          ] else if (calc.psMeuble > 0)
+            _Row(
+              label: 'Prélèvements sociaux 18,6 %',
+              value: money.format(calc.psMeuble),
+            )
+          else
+            _Row(
+              label: 'Prélèvements sociaux 17,2 %',
+              value: money.format(calc.prelevementsSociaux),
+            ),
           if (calc.deficitImputableGlobal > 0) ...[
             const SizedBox(height: 6),
             _Row(
@@ -835,11 +867,76 @@ class _BaremeFooter extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
       child: Text(
-        'Barème IR $annee · PS 17,2 % · Plafond QF 1 759 €/demi-part',
+        'Barème IR $annee · PS foncier 17,2 % · PS meublé 18,6 % · Plafond QF 1 759 €/demi-part',
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 11,
           color: context.textSecondaryColor,
+        ),
+      ),
+    );
+  }
+}
+
+/// Écran de repli affiché quand l'année sélectionnée n'a pas de barème IR
+/// dans la table interne (avant 2006 ou après 2025 actuellement).
+class _IndisponibleScreen extends StatelessWidget {
+  final int year;
+  final List<int> anneesDisponibles;
+  final ValueChanged<int> onPickYear;
+
+  const _IndisponibleScreen({
+    required this.year,
+    required this.anneesDisponibles,
+    required this.onPickYear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final min = anneesDisponibles.first;
+    final max = anneesDisponibles.last;
+    return Scaffold(
+      backgroundColor: context.backgroundColor,
+      appBar: AppBar(title: const Text('Fiscalité')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.calculate_outlined,
+                size: 64,
+                color: Color(0xFF7C3AED),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Barème IR indisponible pour $year',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'L\'application contient les barèmes des revenus $min à $max. '
+                'Sélectionne une année dans cette plage pour voir tes impôts.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.textSecondaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                icon: const Icon(Icons.history_rounded),
+                onPressed: () => onPickYear(max),
+                label: Text('Voir l\'année $max'),
+              ),
+            ],
+          ),
         ),
       ),
     );

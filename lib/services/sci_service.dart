@@ -68,6 +68,17 @@ class CalculSCIIS {
 /// Les SCI à l'IR sont traitées par `FiscaliteService` comme des biens
 /// transparents (intégrées au foyer fiscal personnel).
 class SCIService extends ChangeNotifier {
+  /// Taux global du Prélèvement Forfaitaire Unique sur dividendes SCI-IS.
+  /// - Jusqu'en 2025 : 30 % (12,8 % IR + 17,2 % PS).
+  /// - Dès 2026 : 31,4 % (12,8 % IR + 18,6 % PS, LFSS 2026 — hausse CSG
+  ///   « contribution autonomie »).
+  static double tauxPFUPour(int year) {
+    if (year < 2026) return 0.30;
+    return 0.314;
+  }
+
+  /// Alias rétro-compatible. À éviter pour les nouveaux calculs.
+  @Deprecated('Utiliser tauxPFUPour(year) pour gérer le multi-années')
   static const double tauxPFU = 0.30;
 
   final LogementService _logementService;
@@ -129,7 +140,8 @@ class SCIService extends ChangeNotifier {
   /// IS = bénéfice × 15 % jusqu'à 42 500 €, puis × 25 %.
   ///
   /// La distribution de dividendes saisie par l'utilisateur est soumise au
-  /// PFU 30 % (12,8 % IR + 17,2 % PS).
+  /// PFU. Taux par année : jusqu'en 2025 → 30 % (12,8 % IR + 17,2 % PS) ;
+  /// dès 2026 → 31,4 % (12,8 % IR + 18,6 % PS, LFSS 2026).
   ///
   /// Retourne `null` si la SCI est à l'IR (ce service ne calcule que l'IS ;
   /// les SCI-IR sont traitées par `FiscaliteService`).
@@ -158,7 +170,7 @@ class SCIService extends ChangeNotifier {
     final impotIS = BaremeIS2026.calculer(benefice);
 
     final distribution = sci.distributionPourAnnee(year);
-    final pfu = distribution * tauxPFU;
+    final pfu = distribution * tauxPFUPour(year);
 
     return CalculSCIIS(
       sci: sci,

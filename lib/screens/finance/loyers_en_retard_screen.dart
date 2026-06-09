@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_card.dart';
+import '../../models/contrat_bail.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
+import '../../services/contrat_bail_service.dart';
+import '../../services/dossier_locataire_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/quittance_service.dart';
@@ -34,6 +38,7 @@ class LoyersEnRetardScreen extends StatelessWidget {
     final logements = context.watch<LogementService>().all;
     final locataires = context.watch<LocataireService>().all;
     final quittances = context.watch<QuittanceService>().all;
+    final baux = context.watch<ContratBailService>().all;
     final revisionsSvc = context.watch<RevisionLoyerService>();
     final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
@@ -51,7 +56,19 @@ class LoyersEnRetardScreen extends StatelessWidget {
     for (final l in filtered) {
       final occupants =
           locataires.where((loc) => loc.logementIds.contains(l.id)).toList();
-      for (var m = 1; m <= maxMonth; m++) {
+      // Détermine si le bail (le plus récent) de ce logement est à terme échu :
+      // dans ce cas, le loyer du mois courant n'est pas encore dû.
+      ContratBail? activeBail;
+      for (final b in baux) {
+        if (b.logementId != l.id) continue;
+        if (activeBail == null || b.dateDebut.isAfter(activeBail.dateDebut)) {
+          activeBail = b;
+        }
+      }
+      final termeEchu = activeBail?.paiementTermeEchu ?? false;
+      final lastDue =
+          (year == now.year && termeEchu) ? maxMonth - 1 : maxMonth;
+      for (var m = 1; m <= lastDue; m++) {
         final monthDate = DateTime(year, m, 1);
         final daysInMonth = DateTime(year, m + 1, 0).day;
         var occupiedDays = 0;
@@ -294,9 +311,38 @@ class _RetardTile extends StatelessWidget {
                 color: AppColors.error,
               ),
             ),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Relancer par e-mail',
+              icon: const Icon(Icons.mark_email_unread_outlined,
+                  color: AppColors.error),
+              onPressed: () => _relancer(context),
+            ),
           ],
         ),
     );
+  }
+
+  /// Ouvre l'application e-mail avec une relance pré-remplie (destinataire,
+  /// objet et corps citant les colocataires, la période et le montant dû).
+  Future<void> _relancer(BuildContext context) async {
+    final mois = LoyersEnRetardScreen._mois[retard.month - 1];
+    final r = DossierLocataireService.relanceEmail(
+      retard.locataire,
+      periode: '$mois $year',
+      montant: money.format(retard.montantDu),
+    );
+    final uri = Uri.parse(
+      'mailto:${r.to}?subject=${Uri.encodeComponent(r.subject)}'
+      '&body=${Uri.encodeComponent(r.body)}',
+    );
+    final ok = await launchUrl(uri);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Impossible d\'ouvrir l\'application e-mail.')),
+      );
+    }
   }
 }
 

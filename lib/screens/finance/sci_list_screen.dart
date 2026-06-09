@@ -232,7 +232,8 @@ class _SciCard extends StatelessWidget {
                   if (calc.distribution > 0) ...[
                     const Divider(height: 12),
                     _kv(money, 'Dividendes distribués', calc.distribution),
-                    _kv(money, 'PFU 30 %',
+                    _kv(money,
+                        'PFU ${calc.annee < 2026 ? '30 %' : '31,4 %'}',
                         calc.prelevementForfaitaireUnique,
                         negative: true),
                   ],
@@ -465,7 +466,7 @@ class _SciFormDialogState extends State<_SciFormDialog> {
                 decoration: InputDecoration(
                   labelText: 'Distribution ${widget.year} (€)',
                   helperText: 'Montant distribué aux associés cette année. '
-                      'Soumis à PFU 30 %.',
+                      'Soumis au PFU (30 % jusqu\'en 2025, 31,4 % dès 2026).',
                   helperMaxLines: 2,
                   prefixIcon: const Icon(Icons.euro),
                 ),
