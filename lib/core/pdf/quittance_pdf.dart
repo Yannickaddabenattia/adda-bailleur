@@ -322,6 +322,23 @@ class QuittancePdfBuilder {
       );
     }
 
+    const moisFr = [
+      'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+    ];
+    String labelMois(String key) {
+      // "YYYY-MM"
+      final parts = key.split('-');
+      if (parts.length != 2) return key;
+      final y = parts[0];
+      final m = int.tryParse(parts[1]);
+      if (m == null || m < 1 || m > 12) return key;
+      return '${moisFr[m - 1]} $y';
+    }
+
+    final restantPeriode = q.restantDuPeriode;
+    final versementsKeys = q.versementsSupplementaires.keys.toList()..sort();
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -346,7 +363,18 @@ class QuittancePdfBuilder {
           children: [
             row('Loyer hors charges', money.format(q.loyerHC)),
             row('Provision pour charges', money.format(q.charges)),
-            row('Total perçu', money.format(q.total), highlight: true),
+            row('Total dû ce mois', money.format(q.total), highlight: true),
+            row('Montant encaissé ce mois', money.format(q.montantPayePeriode)),
+            if (restantPeriode > 0.01)
+              row('Restant dû ce mois',
+                  money.format(restantPeriode), highlight: true),
+            for (final k in versementsKeys)
+              row('Versement pour ${labelMois(k)}',
+                  money.format(q.versementsSupplementaires[k]!)),
+            if (versementsKeys.isNotEmpty)
+              row('Total encaissé via cette quittance',
+                  money.format(q.montantEncaisseTotal),
+                  highlight: true),
           ],
         ),
       ],
@@ -377,8 +405,9 @@ class QuittancePdfBuilder {
           pw.Text(
             'Je soussigné, $bailleurName, propriétaire du logement '
             'désigné ci-dessus, donne quittance à $tenantsLabel pour la '
-            'somme de ${money.format(q.total)}, au titre du loyer et des '
-            'charges pour la période du $start au $end.',
+            'somme de ${money.format(q.montantPayePeriode)}, au titre du '
+            'loyer et des charges pour la période du $start au $end'
+            '${q.restantDuPeriode > 0.01 ? " (reste dû : ${money.format(q.restantDuPeriode)})" : ""}.',
             style: const pw.TextStyle(fontSize: 11, lineSpacing: 3),
           ),
           pw.SizedBox(height: 8),

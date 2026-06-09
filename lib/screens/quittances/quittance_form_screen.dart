@@ -38,8 +38,13 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
   final _loyerCtrl = TextEditingController();
   final _chargesCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _montantPayeCtrl = TextEditingController();
+  // Versements supplémentaires alloués à d'autres mois (régularisations
+  // passées ou avance sur mois futurs). Clé = (year, month).
+  final Map<(int year, int month), double> _versementsSupplem = {};
   bool _saving = false;
   bool _initialPrefillDone = false;
+  bool _montantPayeUserEdited = false;
 
   // --- Mode lot ----------------------------------------------------------
   bool _batchMode = false;
@@ -79,6 +84,7 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
     _loyerCtrl.dispose();
     _chargesCtrl.dispose();
     _notesCtrl.dispose();
+    _montantPayeCtrl.dispose();
     super.dispose();
   }
 
@@ -90,6 +96,20 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
         .loyerEffectifAt(logement: l, date: _periode);
     _loyerCtrl.text = effectif.loyerHC.toStringAsFixed(2);
     _chargesCtrl.text = effectif.charges.toStringAsFixed(2);
+    _syncMontantPayeDefault();
+  }
+
+  double _safeParse(String s) =>
+      double.tryParse(s.replaceAll(',', '.').trim()) ?? 0;
+
+  double get _totalDu => _safeParse(_loyerCtrl.text) + _safeParse(_chargesCtrl.text);
+
+  /// Si l'utilisateur n'a pas explicitement modifié le montant payé,
+  /// on le synchronise sur le total dû. Appelé après chaque changement
+  /// de loyer/charges/période.
+  void _syncMontantPayeDefault() {
+    if (_montantPayeUserEdited) return;
+    _montantPayeCtrl.text = _totalDu.toStringAsFixed(2);
   }
 
   Future<void> _pickPeriode() async {
@@ -179,6 +199,17 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
     return (aCreer: mois.length - existantes, dejaExistantes: existantes);
   }
 
+  Future<void> _addVersement() async {
+    final picked = await _pickVersement(
+      context,
+      defaultMois: DateTime(_periode.year, _periode.month - 1),
+    );
+    if (picked == null) return;
+    setState(() {
+      _versementsSupplem[(picked.year, picked.month)] = picked.montant;
+    });
+  }
+
   Future<void> _submit() async {
     if (_batchMode) {
       await _submitLot();
@@ -203,6 +234,13 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
     }
 
     setState(() => _saving = true);
+    final montantPayeRaw = _safeParse(_montantPayeCtrl.text);
+    final montantPayeFinal = _montantPayeUserEdited ? montantPayeRaw : null;
+    final versementsMap = <String, double>{
+      for (final e in _versementsSupplem.entries)
+        if (e.value > 0)
+          QuittanceService.moisKey(e.key.$1, e.key.$2): e.value,
+    };
     final q = Quittance.create(
       logementId: _logement!.id,
       locataireId: _locataire!.id,
@@ -212,6 +250,9 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
       charges: double.parse(_chargesCtrl.text.replaceAll(',', '.')),
       datePaiement: _datePaiement,
       notes: _notesCtrl.text,
+      montantPaye: montantPayeFinal,
+      versementsSupplementaires:
+          versementsMap.isEmpty ? null : versementsMap,
     );
     await service.add(q);
     if (!mounted) return;
@@ -403,6 +444,7 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: _validateAmount,
+                onChanged: (_) => setState(_syncMontantPayeDefault),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -414,6 +456,20 @@ class _QuittanceFormScreenState extends State<QuittanceFormScreen> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: _validateAmount,
+                onChanged: (_) => setState(_syncMontantPayeDefault),
+              ),
+              const SizedBox(height: 16),
+              _PaiementSection(
+                totalDu: _totalDu,
+                montantPayeCtrl: _montantPayeCtrl,
+                onMontantPayeChanged: () => setState(() {
+                  _montantPayeUserEdited = true;
+                }),
+                versements: _versementsSupplem,
+                onAddVersement: _addVersement,
+                onRemoveVersement: (key) => setState(() {
+                  _versementsSupplem.remove(key);
+                }),
               ),
             ] else ...[
               _PickerTile(
@@ -753,4 +809,304 @@ class _LotPreview extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Section "Paiement" du formulaire (montant payé + versements supplem)
+// ─────────────────────────────────────────────────────────────────────────
+
+class _PaiementSection extends StatelessWidget {
+  final double totalDu;
+  final TextEditingController montantPayeCtrl;
+  final VoidCallback onMontantPayeChanged;
+  final Map<(int, int), double> versements;
+  final Future<void> Function() onAddVersement;
+  final void Function((int, int)) onRemoveVersement;
+
+  const _PaiementSection({
+    required this.totalDu,
+    required this.montantPayeCtrl,
+    required this.onMontantPayeChanged,
+    required this.versements,
+    required this.onAddVersement,
+    required this.onRemoveVersement,
+  });
+
+  static const List<String> _mois = [
+    'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+    'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final montantPaye =
+        double.tryParse(montantPayeCtrl.text.replaceAll(',', '.')) ?? 0;
+    final restant = totalDu - montantPaye;
+    final totalVersements =
+        versements.values.fold<double>(0, (s, v) => s + v);
+    final totalEncaisse = montantPaye + totalVersements;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: context.dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.payments_rounded, size: 18,
+                  color: AppColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Paiement',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Dû : ${money.format(totalDu)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: montantPayeCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Montant encaissé ce mois (€)',
+              prefixIcon: Icon(Icons.attach_money_rounded),
+              border: OutlineInputBorder(),
+            ),
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => onMontantPayeChanged(),
+          ),
+          if (restant > 0.01) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.error_outline,
+                    color: AppColors.error, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Reste dû ce mois : ${money.format(restant)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.error,
+                  ),
+                ),
+              ],
+            ),
+          ] else if (restant < -0.01) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.info_outline,
+                    color: AppColors.success, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Excédent : ${money.format(-restant)} (à allouer ci-dessous)',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text(
+                'Versements supplémentaires (régul / avance)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onAddVersement,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Ajouter'),
+              ),
+            ],
+          ),
+          if (versements.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'Aucun versement complémentaire.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+            )
+          else
+            ...versements.entries.map((e) {
+              final label = '${_mois[e.key.$2 - 1]} ${e.key.$1}';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_outlined,
+                        size: 16, color: context.textSecondaryColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      money.format(e.value),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'Retirer',
+                      onPressed: () => onRemoveVersement(e.key),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          if (totalVersements > 0) ...[
+            const Divider(height: 18),
+            Row(
+              children: [
+                Text(
+                  'Total encaissé via cette quittance',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  money.format(totalEncaisse),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PickedVersement {
+  final int year;
+  final int month;
+  final double montant;
+  const _PickedVersement(this.year, this.month, this.montant);
+}
+
+Future<_PickedVersement?> _pickVersement(
+  BuildContext context, {
+  required DateTime defaultMois,
+}) async {
+  DateTime mois = DateTime(defaultMois.year, defaultMois.month);
+  final montantCtrl = TextEditingController();
+  return showDialog<_PickedVersement>(
+    context: context,
+    barrierDismissible: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        title: const Text('Versement supplémentaire'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Précise le mois concerné (régularisation passée ou '
+              'avance sur mois futur) et le montant alloué.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () async {
+                final now = DateTime.now();
+                final picked = await showDatePicker(
+                  context: ctx,
+                  initialDate: mois,
+                  firstDate: DateTime(now.year - 10),
+                  lastDate: DateTime(now.year + 5, 12, 31),
+                  helpText: 'Mois du versement',
+                );
+                if (picked == null) return;
+                setLocal(() => mois = DateTime(picked.year, picked.month));
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Mois concerné',
+                  prefixIcon: Icon(Icons.event_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                child: Text(
+                  DateFormat('MMMM yyyy', 'fr_FR').format(mois),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: montantCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Montant (€)',
+                prefixIcon: Icon(Icons.payments_outlined),
+                border: OutlineInputBorder(),
+              ),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final m = double.tryParse(
+                  montantCtrl.text.replaceAll(',', '.').trim());
+              if (m == null || m <= 0) return;
+              Navigator.of(ctx).pop(
+                _PickedVersement(mois.year, mois.month, m),
+              );
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

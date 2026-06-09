@@ -28,6 +28,19 @@ class Quittance {
   String? bailleurName;
   String? bailleurEmail;
 
+  /// Montant réellement encaissé pour cette quittance. Par défaut = total
+  /// (loyer HC + charges). Peut être inférieur (paiement partiel) ou
+  /// supérieur (avance / régularisation passée incluse dans ce versement).
+  /// Si null à la lecture (anciennes quittances), on retombe sur `total`.
+  double? montantPaye;
+
+  /// Versements supplémentaires alloués à d'autres mois — régularisations
+  /// de mois passés impayés OU avance sur des mois suivants.
+  /// Clé : "YYYY-MM" (ex. "2026-02"). Valeur : montant alloué à ce mois.
+  /// La somme `montantPaye + versementsSupplementaires.values` représente
+  /// l'argent total encaissé via cette quittance.
+  Map<String, double> versementsSupplementaires;
+
   Quittance({
     required this.id,
     required this.logementId,
@@ -43,7 +56,9 @@ class Quittance {
     this.integrityHash,
     this.bailleurName,
     this.bailleurEmail,
-  });
+    this.montantPaye,
+    Map<String, double>? versementsSupplementaires,
+  }) : versementsSupplementaires = versementsSupplementaires ?? {};
 
   factory Quittance.create({
     required String logementId,
@@ -54,6 +69,8 @@ class Quittance {
     required double charges,
     required DateTime datePaiement,
     String notes = '',
+    double? montantPaye,
+    Map<String, double>? versementsSupplementaires,
   }) {
     final now = DateTime.now().toUtc();
     final q = Quittance(
@@ -68,6 +85,8 @@ class Quittance {
       dateEmission: now,
       notes: notes.trim(),
       createdAt: now,
+      montantPaye: montantPaye,
+      versementsSupplementaires: versementsSupplementaires,
     );
     q.integrityHash = q.computeIntegrityHash();
     return q;
@@ -84,6 +103,8 @@ class Quittance {
     required double charges,
     required DateTime datePaiement,
     String? notes,
+    double? montantPaye,
+    Map<String, double>? versementsSupplementaires,
   }) {
     final q = Quittance(
       id: original.id,
@@ -99,12 +120,34 @@ class Quittance {
       createdAt: original.createdAt,
       bailleurName: original.bailleurName,
       bailleurEmail: original.bailleurEmail,
+      montantPaye: montantPaye ?? original.montantPaye,
+      versementsSupplementaires:
+          versementsSupplementaires ?? original.versementsSupplementaires,
     );
     q.integrityHash = q.computeIntegrityHash();
     return q;
   }
 
   double get total => loyerHC + charges;
+
+  /// Montant effectivement encaissé pour la PÉRIODE de cette quittance.
+  /// Si non renseigné explicitement, on suppose que le total a été payé
+  /// (rétro-compat avec les quittances créées avant l'ajout du champ).
+  double get montantPayePeriode => montantPaye ?? total;
+
+  /// Total des versements supplémentaires (alloués à d'autres mois).
+  double get totalVersementsSupplementaires =>
+      versementsSupplementaires.values.fold<double>(0, (s, v) => s + v);
+
+  /// Montant total réellement encaissé via cette quittance (période + autres).
+  double get montantEncaisseTotal =>
+      montantPayePeriode + totalVersementsSupplementaires;
+
+  /// Restant dû pour LA PÉRIODE de cette quittance (≥ 0).
+  double get restantDuPeriode {
+    final diff = total - montantPayePeriode;
+    return diff > 0 ? diff : 0;
+  }
 
   /// Premier jour de la période (1er du mois).
   DateTime get periodStart => DateTime(periodYear, periodMonth, 1);
@@ -121,6 +164,11 @@ class Quittance {
   }
 
   String computeIntegrityHash() {
+    // Sérialisation déterministe des versements supplémentaires (clés triées).
+    final keys = versementsSupplementaires.keys.toList()..sort();
+    final versementsStr = keys
+        .map((k) => '$k=${versementsSupplementaires[k]!.toStringAsFixed(2)}')
+        .join(';');
     final payload = [
       id,
       logementId,
@@ -133,6 +181,8 @@ class Quittance {
       dateEmission.toUtc().toIso8601String(),
       notes.trim(),
       createdAt.toUtc().toIso8601String(),
+      montantPaye?.toStringAsFixed(2) ?? '',
+      versementsStr,
     ].join('|::|');
     return HashService.sha256Hex(payload);
   }
@@ -153,6 +203,13 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
     final fields = <int, dynamic>{
       for (var i = 0; i < numFields; i++) reader.readByte(): reader.read(),
     };
+    final rawVers = fields[15] as Map?;
+    final vers = <String, double>{};
+    if (rawVers != null) {
+      rawVers.forEach((k, v) {
+        if (k is String && v is num) vers[k] = v.toDouble();
+      });
+    }
     return Quittance(
       id: fields[0] as String,
       logementId: fields[1] as String,
@@ -168,6 +225,8 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
       integrityHash: fields[11] as String?,
       bailleurName: fields[12] as String?,
       bailleurEmail: fields[13] as String?,
+      montantPaye: (fields[14] as num?)?.toDouble(),
+      versementsSupplementaires: vers,
     );
   }
 
@@ -175,7 +234,13 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
   void write(BinaryWriter writer, Quittance obj) {
     final hasSnapshot =
         obj.bailleurName != null || obj.bailleurEmail != null;
-    writer.writeByte(hasSnapshot ? 14 : 12);
+    final hasMontantPaye = obj.montantPaye != null;
+    final hasVersements = obj.versementsSupplementaires.isNotEmpty;
+    final count = 12 +
+        (hasSnapshot ? 2 : 0) +
+        (hasMontantPaye ? 1 : 0) +
+        (hasVersements ? 1 : 0);
+    writer.writeByte(count);
     writer
       ..writeByte(0)
       ..write(obj.id)
@@ -207,6 +272,16 @@ class QuittanceAdapter extends TypeAdapter<Quittance> {
         ..write(obj.bailleurName)
         ..writeByte(13)
         ..write(obj.bailleurEmail);
+    }
+    if (hasMontantPaye) {
+      writer
+        ..writeByte(14)
+        ..write(obj.montantPaye);
+    }
+    if (hasVersements) {
+      writer
+        ..writeByte(15)
+        ..write(Map<String, double>.from(obj.versementsSupplementaires));
     }
   }
 }

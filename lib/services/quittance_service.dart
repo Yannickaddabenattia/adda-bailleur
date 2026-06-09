@@ -54,4 +54,29 @@ class QuittanceService extends ChangeNotifier {
   }
 
   int get count => LocalDatabase.quittancesBox.length;
+
+  /// Clé YYYY-MM pour les versements supplémentaires.
+  static String moisKey(int year, int month) =>
+      '$year-${month.toString().padLeft(2, '0')}';
+
+  /// Total encaissé pour un (logement, mois) donné, toutes quittances
+  /// confondues. Somme :
+  /// - les `montantPayePeriode` des quittances dont la période = (year, month)
+  /// - les `versementsSupplementaires["YYYY-MM"]` de TOUTES les quittances
+  ///   du logement (régularisations passées / avances).
+  double totalEncaisseLogementMois({
+    required String logementId,
+    required int year,
+    required int month,
+  }) {
+    final key = moisKey(year, month);
+    var total = 0.0;
+    for (final q in all.where((q) => q.logementId == logementId)) {
+      if (q.periodYear == year && q.periodMonth == month) {
+        total += q.montantPayePeriode;
+      }
+      total += q.versementsSupplementaires[key] ?? 0;
+    }
+    return total;
+  }
 }
