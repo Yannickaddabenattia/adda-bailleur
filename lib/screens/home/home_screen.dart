@@ -70,21 +70,21 @@ class HomeScreen extends StatelessWidget {
 
     // Bilan net annuel — aligné sur le tableau de bord Finance pour éviter
     // toute divergence d'affichage. Mêmes règles :
-    //  - recettes dédoublonnées par (logement, mois) (colocataires ne sont
-    //    pas comptés en double)
+    //  - recettes réellement encaissées (loyer payé dédoublonné par
+    //    colocataires + régularisations/avances) via la source unique
+    //    QuittanceService.encaisseParMoisLogement
     //  - dépenses cumulées de l'année
     //  - crédits via annualPaymentsForLogement (rachat + mois actifs)
     //  - impôts fonciers N-1 (surplus IR + PS) + coût fiscal IS des SCI
     final year = now.year;
     var revenuYTD = 0.0;
     for (final l in logements) {
-      final byMonth = <int, double>{};
-      for (final q in quittances.where(
-          (q) => q.logementId == l.id && q.periodYear == year)) {
-        final prev = byMonth[q.periodMonth];
-        if (prev == null || q.total > prev) byMonth[q.periodMonth] = q.total;
-      }
-      for (final v in byMonth.values) {
+      final encaisse = QuittanceService.encaisseParMoisLogement(
+        quittances: quittances,
+        logementId: l.id,
+        year: year,
+      );
+      for (final v in encaisse.values) {
         revenuYTD += v;
       }
     }

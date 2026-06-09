@@ -84,17 +84,15 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
       perLogementReels[l.id] = 0;
       perLogementAttendus[l.id] = 0;
 
-      // Une seule quittance par (logement, mois) : si plusieurs existent (un par
-      // colocataire), on garde la plus élevée pour ne pas doubler le revenu.
-      final byMonth = <int, double>{};
-      for (final q in quittances.where(
-          (q) => q.logementId == l.id && q.periodYear == _year)) {
-        final prev = byMonth[q.periodMonth];
-        if (prev == null || q.total > prev) {
-          byMonth[q.periodMonth] = q.total;
-        }
-      }
-      for (final entry in byMonth.entries) {
+      // Recettes réellement encaissées (loyer payé dédoublonné par colocataires
+      // + régularisations/avances), ventilées par mois. Source unique partagée
+      // avec l'accueil.
+      final encaisse = QuittanceService.encaisseParMoisLogement(
+        quittances: quittances,
+        logementId: l.id,
+        year: _year,
+      );
+      for (final entry in encaisse.entries) {
         totalReels += entry.value;
         monthlyReels[entry.key] = (monthlyReels[entry.key] ?? 0) + entry.value;
         perLogementReels[l.id] = (perLogementReels[l.id] ?? 0) + entry.value;

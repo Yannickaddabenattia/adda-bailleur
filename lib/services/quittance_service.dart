@@ -59,24 +59,48 @@ class QuittanceService extends ChangeNotifier {
   static String moisKey(int year, int month) =>
       '$year-${month.toString().padLeft(2, '0')}';
 
-  /// Total encaissé pour un (logement, mois) donné, toutes quittances
-  /// confondues. Somme :
-  /// - les `montantPayePeriode` des quittances dont la période = (year, month)
-  /// - les `versementsSupplementaires["YYYY-MM"]` de TOUTES les quittances
-  ///   du logement (régularisations passées / avances).
-  double totalEncaisseLogementMois({
+  /// Recettes réellement encaissées pour [logementId] sur [year], ventilées
+  /// par mois (1-12 ; les mois sans recette sont omis). Combine :
+  /// - le loyer encaissé du mois (`montantPayePeriode` = montant réellement
+  ///   payé, ou `total` à défaut), **dédoublonné par mois** : si plusieurs
+  ///   quittances existent pour le même mois (une par colocataire), on garde
+  ///   la plus élevée et non la somme, pour ne pas doubler le revenu ;
+  /// - les versements supplémentaires (régularisations d'arriérés / avances)
+  ///   alloués à un mois de [year], **sommés** — ils s'ajoutent au loyer du
+  ///   mois ciblé, y compris lorsqu'ils sont saisis sur une quittance d'une
+  ///   autre période.
+  ///
+  /// Méthode statique (pure) : même résultat pour l'accueil et le tableau de
+  /// bord Finance, qui partagent ainsi une seule source de vérité.
+  static Map<int, double> encaisseParMoisLogement({
+    required List<Quittance> quittances,
     required String logementId,
     required int year,
-    required int month,
   }) {
-    final key = moisKey(year, month);
-    var total = 0.0;
-    for (final q in all.where((q) => q.logementId == logementId)) {
-      if (q.periodYear == year && q.periodMonth == month) {
-        total += q.montantPayePeriode;
+    final loyerMax = <int, double>{};
+    final versements = <int, double>{};
+    for (final q in quittances) {
+      if (q.logementId != logementId) continue;
+      if (q.periodYear == year) {
+        final prev = loyerMax[q.periodMonth];
+        final paye = q.montantPayePeriode;
+        if (prev == null || paye > prev) loyerMax[q.periodMonth] = paye;
       }
-      total += q.versementsSupplementaires[key] ?? 0;
+      q.versementsSupplementaires.forEach((key, montant) {
+        final parts = key.split('-');
+        if (parts.length == 2 && int.tryParse(parts[0]) == year) {
+          final m = int.tryParse(parts[1]);
+          if (m != null && m >= 1 && m <= 12) {
+            versements[m] = (versements[m] ?? 0) + montant;
+          }
+        }
+      });
     }
-    return total;
+    final result = <int, double>{};
+    for (var m = 1; m <= 12; m++) {
+      final v = (loyerMax[m] ?? 0) + (versements[m] ?? 0);
+      if (v != 0) result[m] = v;
+    }
+    return result;
   }
 }
