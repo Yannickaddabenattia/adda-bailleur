@@ -18,7 +18,9 @@ import '../../core/storage/local_database.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/contrat_bail.dart';
 import '../../models/locataire.dart';
+import '../../models/logement.dart';
 import '../../services/contrat_bail_service.dart';
+import '../../services/contrat_bail_validation_service.dart';
 import '../../services/diagnostic_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
@@ -268,12 +270,62 @@ class ContratBailDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Affiche la liste des problèmes bloquants empêchant la génération du PDF.
+  Future<void> _showBailIncompletDialog(
+      BuildContext context, List<String> problemes) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bail incomplet'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'La génération du PDF est bloquée tant que ces points ne sont '
+              'pas corrigés :',
+            ),
+            const SizedBox(height: 12),
+            for (final p in problemes)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('•  '),
+                    Expanded(child: Text(p)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Compris'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _generatePdf(
     BuildContext context,
     ContratBail bail,
     dynamic logement,
     List<Locataire> locataires,
   ) async {
+    // Verrou dur : un bail incomplet ne doit jamais générer de PDF.
+    final problemes = ContratBailValidation.validateFull(
+      bail,
+      logement: logement is Logement ? logement : null,
+      diagnostics:
+          context.read<DiagnosticService>().forLogement(bail.logementId),
+    );
+    if (problemes.isNotEmpty) {
+      await _showBailIncompletDialog(context, problemes);
+      return;
+    }
     final bailleur =
         LocalDatabase.userBox.get(AppConstants.userProfileKey);
     if (bailleur == null) {
@@ -400,6 +452,17 @@ class ContratBailDetailScreen extends StatelessWidget {
     dynamic logement,
     List<Locataire> locataires,
   ) async {
+    // Verrou dur : un bail incomplet ne doit jamais générer d'annexes.
+    final problemes = ContratBailValidation.validateFull(
+      bail,
+      logement: logement is Logement ? logement : null,
+      diagnostics:
+          context.read<DiagnosticService>().forLogement(bail.logementId),
+    );
+    if (problemes.isNotEmpty) {
+      await _showBailIncompletDialog(context, problemes);
+      return;
+    }
     final bailleur =
         LocalDatabase.userBox.get(AppConstants.userProfileKey);
     if (bailleur == null) {

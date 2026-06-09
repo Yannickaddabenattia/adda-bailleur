@@ -1,11 +1,19 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../models/bail_template.dart';
+import '../../models/clause.dart';
 import '../../models/contrat_bail.dart';
+import '../../models/garant.dart';
 import '../../models/logement.dart';
+import '../../services/bail_template_service.dart';
 import '../../services/contrat_bail_service.dart';
 import '../../services/locataire_service.dart';
 import '../../widgets/primary_button.dart';
@@ -13,13 +21,19 @@ import 'contrat_bail_detail_screen.dart';
 
 /// Formulaire de création / édition d'un contrat de bail. Conditionne les
 /// champs visibles selon le type de bail sélectionné.
+///
+/// Lorsque [template] est fourni (sélection depuis la galerie), les valeurs
+/// par défaut sont pré-remplies depuis le template : type, durée, dépôt,
+/// préavis, équipements meublé, clauses pré-cochées.
 class ContratBailFormScreen extends StatefulWidget {
   final Logement logement;
   final ContratBail? existing;
+  final BailTemplate? template;
   const ContratBailFormScreen({
     super.key,
     required this.logement,
     this.existing,
+    this.template,
   });
 
   @override
@@ -41,6 +55,19 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
   late TextEditingController _notes;
   late TextEditingController _justifMobilite;
   late TextEditingController _noteAnimaux;
+  late TextEditingController _restitutionDepot;
+  late TextEditingController _description;
+  late TextEditingController _bailleurAdresse;
+  late TextEditingController _bailleurTel;
+  late TextEditingController _bailleurRaisonSociale;
+  late TextEditingController _bailleurSiret;
+  late TextEditingController _bailleurRepresentant;
+  bool _bailleurEstSociete = false;
+  final List<Garant> _garants = [];
+  final Set<String> _activeCatalogIds = {};
+  final List<Clause> _customClauses = [];
+  String? _assuranceFilePath;
+  final List<String> _annexes = [];
   ModePaiement _modePaiement = ModePaiement.virement;
 
   bool _revisionIRL = true;
@@ -48,9 +75,14 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
   bool _animaux = false;
   bool _solidariteColo = true;
   bool _chargesIncluses = false;
+  bool _attestationAssurance = false;
+  bool _mentionEDL = false;
+  bool _termeEchu = false;
 
   final Set<String> _selectedLocataireIds = {};
   String? _referentColo;
+  String? _templateSourceId;
+  DateTime? _templateAppliqueLe;
 
   /// Équipements bail meublé : map(label → coché).
   late Map<String, bool> _equipements;
@@ -101,6 +133,33 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     _justifMobilite =
         TextEditingController(text: e?.justificatifMobilite ?? '');
     _noteAnimaux = TextEditingController(text: e?.noteAnimaux ?? '');
+    _restitutionDepot =
+        TextEditingController(text: e?.modalitesRestitutionDepot ?? '');
+    _description =
+        TextEditingController(text: e?.descriptionLogement ?? '');
+    _bailleurAdresse = TextEditingController(text: e?.bailleurAdresse ?? '');
+    _bailleurTel = TextEditingController(text: e?.bailleurTelephone ?? '');
+    _bailleurRaisonSociale =
+        TextEditingController(text: e?.bailleurRaisonSociale ?? '');
+    _bailleurSiret = TextEditingController(text: e?.bailleurSiret ?? '');
+    _bailleurRepresentant =
+        TextEditingController(text: e?.bailleurRepresentant ?? '');
+    _bailleurEstSociete = e?.bailleurEstSociete ?? false;
+    if (e != null) {
+      _garants.addAll(e.garants);
+      for (final c in e.clauses) {
+        if (c.isCustom) {
+          _customClauses.add(c.copy());
+        } else {
+          _activeCatalogIds.add(c.id);
+        }
+      }
+    }
+    _attestationAssurance = e?.attestationAssurance ?? false;
+    _mentionEDL = e?.mentionEtatDesLieux ?? false;
+    _termeEchu = e?.paiementTermeEchu ?? false;
+    _assuranceFilePath = e?.assuranceFilePath;
+    if (e != null) _annexes.addAll(e.annexesOptionnelles);
     _modePaiement = e?.modePaiement ?? ModePaiement.virement;
     _revisionIRL = e?.revisionAnnuelleIRL ?? true;
     _nonFumeur = e?.nonFumeur ?? false;
@@ -116,6 +175,49 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     };
     if (e != null) {
       _equipements.addAll(e.equipementsMeuble);
+      _templateSourceId = e.templateSourceId;
+      _templateAppliqueLe = e.templateAppliqueLe;
+    }
+
+    // Pré-remplissage à partir d'un template (uniquement en création, pas en édition).
+    final t = widget.template;
+    if (e == null && t != null) {
+      _type = t.typeBail;
+      _dureeMois.text = '${t.dureeDefautMois}';
+      final loyer = widget.logement.loyerHC;
+      final depot = t.depotInterdit ? 0.0 : loyer * t.depotMultiplicateurLoyer;
+      _depot.text = depot.toStringAsFixed(2);
+      _justifMobilite.text = t.justificatifMobiliteRequis ? '' : '';
+      // Clauses pré-cochées du template
+      _activeCatalogIds.addAll(t.clausesPreCochees);
+      for (final c in t.clausesPersoIncluses) {
+        _customClauses.add(c.copy());
+      }
+      // Équipements meublé du template
+      if (t.equipementsMeubleDefauts != null) {
+        // Mapping clés sémantiques → libellés français du form
+        const keyToLabel = {
+          'literie': 'Literie (lit, matelas, couette/oreiller)',
+          'volets_rideaux': 'Volets ou rideaux occultants (chambre)',
+          'plaques_cuisson': 'Plaques de cuisson',
+          'four_micro_ondes': 'Four ou micro-ondes',
+          'refrigerateur': 'Réfrigérateur + congélateur',
+          'congelateur': 'Réfrigérateur + congélateur',
+          'vaisselle': 'Vaisselle nécessaire à la prise des repas',
+          'ustensiles_cuisine': 'Ustensiles de cuisine',
+          'table_sieges': 'Table et sièges',
+          'luminaires': 'Luminaires',
+          'menage': 'Matériel d\'entretien ménager adapté',
+        };
+        for (final entry in t.equipementsMeubleDefauts!.entries) {
+          final lbl = keyToLabel[entry.key];
+          if (lbl != null && _equipements.containsKey(lbl)) {
+            _equipements[lbl] = entry.value;
+          }
+        }
+      }
+      _templateSourceId = t.id;
+      _templateAppliqueLe = DateTime.now().toUtc();
     }
   }
 
@@ -130,6 +232,13 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     _notes.dispose();
     _justifMobilite.dispose();
     _noteAnimaux.dispose();
+    _restitutionDepot.dispose();
+    _description.dispose();
+    _bailleurAdresse.dispose();
+    _bailleurTel.dispose();
+    _bailleurRaisonSociale.dispose();
+    _bailleurSiret.dispose();
+    _bailleurRepresentant.dispose();
     super.dispose();
   }
 
@@ -153,6 +262,195 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     if (picked != null) setState(() => _dateDebut = picked);
   }
 
+  /// Sélectionne un fichier et le copie dans le sandbox de l'app. Retourne le
+  /// chemin local de la copie, ou null si annulé.
+  Future<String?> _pickAttachment() async {
+    final r = await FilePicker.platform.pickFiles();
+    if (r == null || r.files.single.path == null) return null;
+    final src = File(r.files.single.path!);
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/contrats_bail/annexes');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final dest = File('${dir.path}/${stamp}_${r.files.single.name}');
+    await src.copy(dest.path);
+    return dest.path;
+  }
+
+  /// Ouvre un dialogue pour créer ou éditer un garant.
+  Future<void> _editGarant(Garant? existing) async {
+    final prenom = TextEditingController(text: existing?.prenom ?? '');
+    final nom = TextEditingController(text: existing?.nom ?? '');
+    final adresse = TextEditingController(text: existing?.adresse ?? '');
+    final tel = TextEditingController(text: existing?.telephone ?? '');
+    final email = TextEditingController(text: existing?.email ?? '');
+    final revenus = TextEditingController(
+      text: existing?.revenusMensuels != null
+          ? existing!.revenusMensuels!.toStringAsFixed(0)
+          : '',
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(existing == null ? 'Nouveau garant' : 'Modifier le garant'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: prenom,
+                  decoration: const InputDecoration(labelText: 'Prénom')),
+              TextField(
+                  controller: nom,
+                  decoration: const InputDecoration(labelText: 'Nom')),
+              TextField(
+                  controller: adresse,
+                  decoration: const InputDecoration(labelText: 'Adresse')),
+              TextField(
+                  controller: tel,
+                  decoration: const InputDecoration(labelText: 'Téléphone'),
+                  keyboardType: TextInputType.phone),
+              TextField(
+                  controller: email,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress),
+              TextField(
+                  controller: revenus,
+                  decoration: const InputDecoration(
+                      labelText: 'Revenus mensuels (€)'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (prenom.text.trim().isEmpty && nom.text.trim().isEmpty) return;
+    final rev = double.tryParse(revenus.text.replaceAll(',', '.'));
+    setState(() {
+      if (existing == null) {
+        _garants.add(Garant.create(
+          nom: nom.text,
+          prenom: prenom.text,
+          adresse: adresse.text,
+          telephone: tel.text,
+          email: email.text,
+          revenusMensuels: rev,
+        ));
+      } else {
+        existing.nom = nom.text.trim().toUpperCase();
+        existing.prenom = prenom.text.trim();
+        existing.adresse =
+            adresse.text.trim().isEmpty ? null : adresse.text.trim();
+        existing.telephone =
+            tel.text.trim().isEmpty ? null : tel.text.trim();
+        existing.email = email.text.trim().isEmpty
+            ? null
+            : email.text.trim().toLowerCase();
+        existing.revenusMensuels = rev;
+      }
+    });
+  }
+
+  /// Section de catalogue pour une catégorie de clauses (cases à cocher).
+  Widget _catalogCategorySection(ClauseCategorie cat) {
+    final clauses =
+        ClauseCatalogue.standard.where((c) => c.categorie == cat).toList();
+    if (clauses.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 2),
+          child: Text(
+            cat.label.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+        for (final c in clauses)
+          CheckboxListTile(
+            value: _activeCatalogIds.contains(c.id),
+            onChanged: (v) => setState(() {
+              if (v == true) {
+                _activeCatalogIds.add(c.id);
+              } else {
+                _activeCatalogIds.remove(c.id);
+              }
+            }),
+            title: Text(c.titre),
+            subtitle: Text(c.contenu,
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            isThreeLine: true,
+          ),
+      ],
+    );
+  }
+
+  /// Ouvre un dialogue pour créer ou éditer une clause personnalisée.
+  Future<void> _editCustomClause(Clause? existing) async {
+    final titre = TextEditingController(text: existing?.titre ?? '');
+    final contenu = TextEditingController(text: existing?.contenu ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title:
+            Text(existing == null ? 'Nouvelle clause' : 'Modifier la clause'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: titre,
+                  decoration: const InputDecoration(labelText: 'Titre')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: contenu,
+                decoration: const InputDecoration(labelText: 'Contenu'),
+                minLines: 3,
+                maxLines: 8,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (titre.text.trim().isEmpty && contenu.text.trim().isEmpty) return;
+    setState(() {
+      if (existing == null) {
+        _customClauses
+            .add(Clause.custom(titre: titre.text, contenu: contenu.text));
+      } else {
+        existing.titre = titre.text.trim();
+        existing.contenu = contenu.text.trim();
+      }
+    });
+  }
+
   Future<void> _save({required bool openDetail}) async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedLocataireIds.isEmpty) {
@@ -168,9 +466,9 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
       ((_dateDebut.month - 1 + dureeMois) % 12) + 1,
       _dateDebut.day,
     );
-    final loyer = double.parse(_loyerHC.text.replaceAll(',', '.'));
-    final charges = double.parse(_charges.text.replaceAll(',', '.'));
-    final depot = double.parse(_depot.text.replaceAll(',', '.'));
+    final loyer = double.tryParse(_loyerHC.text.replaceAll(',', '.')) ?? 0;
+    final charges = double.tryParse(_charges.text.replaceAll(',', '.')) ?? 0;
+    final depot = double.tryParse(_depot.text.replaceAll(',', '.')) ?? 0;
     final jour = int.tryParse(_jourEcheance.text) ?? 5;
 
     final existing = widget.existing;
@@ -220,9 +518,42 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     contrat.chargesIncluses = _chargesIncluses;
     contrat.justificatifMobilite =
         _justifMobilite.text.trim().isEmpty ? null : _justifMobilite.text.trim();
+    contrat.attestationAssurance = _attestationAssurance;
+    contrat.paiementTermeEchu = _termeEchu;
+    contrat.assuranceFilePath = _assuranceFilePath;
+    contrat.annexesOptionnelles = List<String>.from(_annexes);
+    contrat.mentionEtatDesLieux = _mentionEDL;
+    contrat.modalitesRestitutionDepot = _restitutionDepot.text.trim().isEmpty
+        ? null
+        : _restitutionDepot.text.trim();
+    contrat.descriptionLogement =
+        _description.text.trim().isEmpty ? null : _description.text.trim();
+    String? optText(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    contrat.bailleurAdresse = optText(_bailleurAdresse);
+    contrat.bailleurTelephone = optText(_bailleurTel);
+    contrat.bailleurEstSociete = _bailleurEstSociete;
+    contrat.bailleurRaisonSociale = optText(_bailleurRaisonSociale);
+    contrat.bailleurSiret = optText(_bailleurSiret);
+    contrat.bailleurRepresentant = optText(_bailleurRepresentant);
+    contrat.garants = List<Garant>.from(_garants);
+    final catalogActives = ClauseCatalogue.standard
+        .where((c) => _activeCatalogIds.contains(c.id))
+        .map((c) => c.copy()..active = true)
+        .toList();
+    contrat.clauses = [...catalogActives, ..._customClauses];
     contrat.notes = _notes.text.trim();
+    contrat.templateSourceId = _templateSourceId;
+    contrat.templateAppliqueLe = _templateAppliqueLe;
 
     await svc.save(contrat);
+    if (_templateSourceId != null) {
+      try {
+        await context.read<BailTemplateService>().incrementUsage(_templateSourceId!);
+      } catch (_) {
+        // pas critique : ignore silencieusement les erreurs de comptage
+      }
+    }
     if (!mounted) return;
     if (openDetail) {
       Navigator.of(context).pushReplacement(
@@ -249,9 +580,12 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
       ),
       body: Form(
         key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            if (_templateSourceId != null)
+              _TemplateBanner(templateId: _templateSourceId!),
             _Section('Type de bail'),
             DropdownButtonFormField<BailType>(
               initialValue: _type,
@@ -348,6 +682,11 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
               ),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (v) {
+                final n = int.tryParse(v ?? '');
+                if (n == null || n <= 0) return 'Durée en mois requise (> 0)';
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             _Section('Loyer et charges'),
@@ -363,6 +702,12 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                     ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
+                    validator: (v) {
+                      final n =
+                          double.tryParse((v ?? '').replaceAll(',', '.'));
+                      if (n == null || n <= 0) return 'Loyer > 0 requis';
+                      return null;
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -375,6 +720,12 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                     ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
+                    validator: (v) {
+                      final n =
+                          double.tryParse((v ?? '').replaceAll(',', '.'));
+                      if (n == null || n < 0) return 'Charges ≥ 0 requises';
+                      return null;
+                    },
                   ),
                 ),
               ],
@@ -408,7 +759,7 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
             TextFormField(
               controller: _jourEcheance,
               decoration: const InputDecoration(
-                labelText: 'Jour d\'échéance (1-31)',
+                labelText: 'Jour d\'échéance (1-28) *',
                 prefixIcon: Icon(Icons.calendar_today_outlined),
               ),
               keyboardType: TextInputType.number,
@@ -416,6 +767,21 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(2),
               ],
+              validator: (v) {
+                final n = int.tryParse(v ?? '');
+                if (n == null || n < 1 || n > 28) {
+                  return 'Jour entre 1 et 28';
+                }
+                return null;
+              },
+            ),
+            CheckboxListTile(
+              value: _termeEchu,
+              onChanged: (v) => setState(() => _termeEchu = v ?? _termeEchu),
+              title: const Text('Loyer payable à terme échu'),
+              subtitle: const Text(
+                  'En fin de période (sinon : d\'avance / à échoir).'),
+              contentPadding: EdgeInsets.zero,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -429,6 +795,18 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
               ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
+              validator: (v) {
+                final n = double.tryParse((v ?? '').replaceAll(',', '.'));
+                if (n == null || n < 0) return 'Dépôt ≥ 0 requis';
+                final loyer =
+                    double.tryParse(_loyerHC.text.replaceAll(',', '.')) ?? 0;
+                final plafond = loyer * _type.plafondDepotMois;
+                if (loyer > 0 && n > plafond + 0.01) {
+                  return 'Max ${_type.plafondDepotMois} mois de loyer '
+                      '(${plafond.toStringAsFixed(2)} €)';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 16),
             _Section('Clauses spécifiques'),
@@ -515,6 +893,224 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                 ),
             ],
             const SizedBox(height: 16),
+            _Section('Bailleur'),
+            SwitchListTile(
+              value: _bailleurEstSociete,
+              onChanged: (v) => setState(() => _bailleurEstSociete = v),
+              title: const Text('Bailleur = société (SCI, SARL…)'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            if (_bailleurEstSociete) ...[
+              TextFormField(
+                controller: _bailleurRaisonSociale,
+                decoration: const InputDecoration(
+                  labelText: 'Raison sociale *',
+                  prefixIcon: Icon(Icons.business_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _bailleurSiret,
+                decoration: const InputDecoration(
+                  labelText: 'SIRET *',
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _bailleurRepresentant,
+                decoration: const InputDecoration(
+                  labelText: 'Représentant légal',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            TextFormField(
+              controller: _bailleurAdresse,
+              decoration: const InputDecoration(
+                labelText: 'Adresse du bailleur',
+                prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+              minLines: 1,
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _bailleurTel,
+              decoration: const InputDecoration(
+                labelText: 'Téléphone du bailleur',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 16),
+            _Section('Garants / cautions'),
+            for (final g in _garants)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.shield_outlined),
+                  title: Text(g.fullName),
+                  subtitle: Text(
+                    [
+                      if (g.revenusMensuels != null)
+                        '${g.revenusMensuels!.toStringAsFixed(0)} €/mois',
+                      if (g.email != null) g.email!,
+                    ].join(' · '),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => setState(() => _garants.remove(g)),
+                  ),
+                  onTap: () => _editGarant(g),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () => _editGarant(null),
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter un garant'),
+            ),
+            const SizedBox(height: 16),
+            _Section('Clauses du bail'),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Coche les clauses à inclure, ou ajoute les tiennes.',
+                style:
+                    TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
+            for (final cat in ClauseCategorie.values
+                .where((c) => c != ClauseCategorie.personnalisee))
+              _catalogCategorySection(cat),
+            const Padding(
+              padding: EdgeInsets.only(top: 12, bottom: 2),
+              child: Text(
+                'CLAUSES PERSONNALISÉES',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            for (final c in _customClauses)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.edit_note),
+                  title: Text(c.titre.isEmpty ? '(Sans titre)' : c.titre),
+                  subtitle: Text(c.contenu,
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () =>
+                        setState(() => _customClauses.remove(c)),
+                  ),
+                  onTap: () => _editCustomClause(c),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () => _editCustomClause(null),
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter une clause personnalisée'),
+            ),
+            const SizedBox(height: 16),
+            _Section('Logement & obligations'),
+            TextFormField(
+              controller: _description,
+              decoration: const InputDecoration(
+                labelText: 'Description du logement',
+                helperText: 'Ex : T3 avec balcon, cuisine équipée…',
+                prefixIcon: Icon(Icons.home_outlined),
+              ),
+              minLines: 2,
+              maxLines: 4,
+            ),
+            const SizedBox(height: 4),
+            CheckboxListTile(
+              value: _mentionEDL,
+              onChanged: (v) => setState(() => _mentionEDL = v ?? _mentionEDL),
+              title: const Text('État des lieux d\'entrée réalisé ou prévu'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            CheckboxListTile(
+              value: _attestationAssurance,
+              onChanged: (v) => setState(
+                  () => _attestationAssurance = v ?? _attestationAssurance),
+              title: const Text('Attestation d\'assurance habitation fournie'),
+              subtitle: const Text('Obligatoire pour générer le bail.'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.attach_file),
+              title: Text(
+                _assuranceFilePath == null
+                    ? 'Joindre l\'attestation (fichier)'
+                    : _assuranceFilePath!.split('/').last,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: _assuranceFilePath == null
+                  ? const Icon(Icons.upload_file)
+                  : IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () =>
+                          setState(() => _assuranceFilePath = null),
+                    ),
+              onTap: () async {
+                final p = await _pickAttachment();
+                if (p != null) setState(() => _assuranceFilePath = p);
+              },
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _restitutionDepot,
+              decoration: const InputDecoration(
+                labelText: 'Modalités de restitution du dépôt',
+                helperText:
+                    'Ex : sous 1 mois après l\'état des lieux de sortie.',
+                prefixIcon: Icon(Icons.assignment_return_outlined),
+              ),
+              minLines: 1,
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            _Section('Pièces jointes optionnelles'),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Règlement de copropriété, photos, plan, assurance bailleur…',
+                style:
+                    TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
+            for (final a in _annexes)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.insert_drive_file_outlined),
+                  title: Text(a.split('/').last,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => setState(() => _annexes.remove(a)),
+                  ),
+                ),
+              ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final p = await _pickAttachment();
+                if (p != null) setState(() => _annexes.add(p));
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Ajouter une pièce jointe'),
+            ),
+            const SizedBox(height: 16),
             _Section('Notes additionnelles'),
             TextFormField(
               controller: _notes,
@@ -558,6 +1154,56 @@ class _Section extends StatelessWidget {
           letterSpacing: 1,
           color: AppColors.textSecondary,
         ),
+      ),
+    );
+  }
+}
+
+/// Bandeau d'information « Basé sur le modèle X » en haut du form bail.
+/// Affiché uniquement quand un template a été appliqué.
+class _TemplateBanner extends StatelessWidget {
+  final String templateId;
+  const _TemplateBanner({required this.templateId});
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = context.watch<BailTemplateService>();
+    final t = svc.byId(templateId);
+    final nom = t?.nom ?? 'Modèle personnalisé';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.bookmark_added_outlined,
+              size: 18, color: AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Basé sur le modèle',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+                Text(
+                  nom,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -11,6 +11,7 @@ import '../../models/piece.dart';
 import '../../models/plan_logement.dart';
 import '../../models/quittance.dart';
 import '../../models/avenant.dart';
+import '../../models/bail_template.dart';
 import '../../models/contrat_bail.dart';
 import '../../models/diagnostic.dart';
 import '../../models/received_bundle.dart';
@@ -39,6 +40,7 @@ class LocalDatabase {
   static late Box<ContratBail> _contratsBailBox;
   static late Box<Avenant> _avenantsBox;
   static late Box<Diagnostic> _diagnosticsBox;
+  static late Box<BailTemplate> _bailTemplatesBox;
   static late Box<String> _settingsBox;
 
   static Box<UserProfile> get userBox {
@@ -121,6 +123,11 @@ class LocalDatabase {
     return _diagnosticsBox;
   }
 
+  static Box<BailTemplate> get bailTemplatesBox {
+    _ensureInit();
+    return _bailTemplatesBox;
+  }
+
   static Box<String> get settingsBox {
     _ensureInit();
     return _settingsBox;
@@ -158,6 +165,7 @@ class LocalDatabase {
     _registerAdapter(ContratBailAdapter());
     _registerAdapter(AvenantAdapter());
     _registerAdapter(DiagnosticAdapter());
+    _registerAdapter(BailTemplateAdapter());
 
     final encryptionKey = await SecureKeyStore.getOrCreateEncryptionKey();
     final cipher = HiveAesCipher(encryptionKey);
@@ -226,6 +234,10 @@ class LocalDatabase {
       AppConstants.diagnosticsBox,
       encryptionCipher: cipher,
     );
+    _bailTemplatesBox = await Hive.openBox<BailTemplate>(
+      AppConstants.bailTemplatesBox,
+      encryptionCipher: cipher,
+    );
     _settingsBox = await Hive.openBox<String>(
       AppConstants.settingsBox,
       encryptionCipher: cipher,
@@ -285,6 +297,7 @@ class LocalDatabase {
       await _contratsBailBox.clear();
       await _avenantsBox.clear();
       await _diagnosticsBox.clear();
+      await _bailTemplatesBox.clear();
       await _settingsBox.clear();
       await _userBox.close();
       await _logementsBox.close();
@@ -302,6 +315,7 @@ class LocalDatabase {
       await _contratsBailBox.close();
       await _avenantsBox.close();
       await _diagnosticsBox.close();
+      await _bailTemplatesBox.close();
       await _settingsBox.close();
       _initialized = false;
     }
@@ -321,6 +335,7 @@ class LocalDatabase {
     await Hive.deleteBoxFromDisk(AppConstants.contratsBailBox);
     await Hive.deleteBoxFromDisk(AppConstants.avenantsBox);
     await Hive.deleteBoxFromDisk(AppConstants.diagnosticsBox);
+    await Hive.deleteBoxFromDisk(AppConstants.bailTemplatesBox);
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await SecureKeyStore.deleteKey();
   }

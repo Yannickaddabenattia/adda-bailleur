@@ -6,7 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/contrat_bail.dart';
 import '../../models/logement.dart';
 import '../../services/contrat_bail_service.dart';
-import 'contrat_bail_form_screen.dart';
+import 'bail_template_gallery_screen.dart';
 import 'contrat_bail_detail_screen.dart';
 
 /// Liste des contrats de bail d'un logement. Permet d'en créer un nouveau,
@@ -57,7 +57,7 @@ class ContratBailListScreen extends StatelessWidget {
   void _openNew(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ContratBailFormScreen(logement: logement),
+        builder: (_) => BailTemplateGalleryScreen(logement: logement),
       ),
     );
   }

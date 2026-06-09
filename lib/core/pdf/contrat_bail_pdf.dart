@@ -231,7 +231,23 @@ class ContratBailPdfBuilder {
           section('Article 1 — Parties', [
             pw.Text('Bailleur', style: h2),
             pw.SizedBox(height: 4),
-            kv('Nom', bailleur.fullName),
+            if (bail.bailleurEstSociete) ...[
+              if ((bail.bailleurRaisonSociale ?? '').isNotEmpty)
+                kv('Société', bail.bailleurRaisonSociale!),
+              if ((bail.bailleurSiret ?? '').isNotEmpty)
+                kv('SIRET', bail.bailleurSiret!),
+              kv(
+                'Représenté par',
+                (bail.bailleurRepresentant ?? '').isNotEmpty
+                    ? bail.bailleurRepresentant!
+                    : bailleur.fullName,
+              ),
+            ] else
+              kv('Nom', bailleur.fullName),
+            if ((bail.bailleurAdresse ?? '').isNotEmpty)
+              kv('Adresse', bail.bailleurAdresse!),
+            if ((bail.bailleurTelephone ?? '').isNotEmpty)
+              kv('Téléphone', bail.bailleurTelephone!),
             if (bailleur.email.isNotEmpty) kv('Email', bailleur.email),
             pw.SizedBox(height: 10),
             pw.Text(
@@ -239,14 +255,65 @@ class ContratBailPdfBuilder {
               style: h2,
             ),
             pw.SizedBox(height: 4),
-            for (final l in locataires) ...[
-              kv('Nom', l.fullName),
-              if (l.email.isNotEmpty) kv('Email', l.email),
-              if (l.phone != null && l.phone!.isNotEmpty)
-                kv('Téléphone', l.phone!),
-              if (l.id == bail.referentColocataireId)
+            for (var i = 0; i < locataires.length; i++) ...[
+              if (locataires.length > 1)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 6, bottom: 2),
+                  child: pw.Text(
+                    'Co-locataire ${i + 1}'
+                    '${locataires[i].id == bail.referentColocataireId ? ' (référent)' : ''}',
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ),
+              kv('Nom complet', locataires[i].fullName),
+              kv(
+                'Né(e) le',
+                locataires[i].dateNaissance != null
+                    ? dateLong.format(locataires[i].dateNaissance!)
+                    : '— Non renseigné —',
+              ),
+              kv(
+                'Adresse',
+                (locataires[i].adresse != null &&
+                        locataires[i].adresse!.isNotEmpty)
+                    ? locataires[i].adresse!
+                    : '— Non renseignée —',
+              ),
+              kv(
+                'Téléphone',
+                (locataires[i].phone != null &&
+                        locataires[i].phone!.isNotEmpty)
+                    ? locataires[i].phone!
+                    : '— Non renseigné —',
+              ),
+              kv(
+                'Email',
+                locataires[i].email.isNotEmpty
+                    ? locataires[i].email
+                    : '— Non renseigné —',
+              ),
+              if (locataires.length == 1 &&
+                  locataires[i].id == bail.referentColocataireId)
                 kv('Rôle', 'Référent colocataire'),
-              pw.SizedBox(height: 6),
+              pw.SizedBox(height: 8),
+            ],
+            if (bail.garants.isNotEmpty) ...[
+              pw.SizedBox(height: 4),
+              pw.Text('Garant${bail.garants.length > 1 ? 's' : ''} (caution)',
+                  style: h2),
+              pw.SizedBox(height: 4),
+              for (final g in bail.garants) ...[
+                kv('Nom', g.fullName),
+                if (g.adresse != null && g.adresse!.isNotEmpty)
+                  kv('Adresse', g.adresse!),
+                if (g.revenusMensuels != null)
+                  kv('Revenus mensuels', money.format(g.revenusMensuels!)),
+                pw.SizedBox(height: 6),
+              ],
             ],
           ]),
 
@@ -265,6 +332,11 @@ class ContratBailPdfBuilder {
               '${bail.type == BailType.saisonnier ? '— OU MEUBLÉ DE TOURISME pour ce bail saisonnier' : ''}'
               '. Le locataire s\'engage à ne pas changer cet usage sans accord écrit du bailleur.',
             ),
+            if (bail.descriptionLogement != null &&
+                bail.descriptionLogement!.isNotEmpty) ...[
+              pw.SizedBox(height: 4),
+              paragraph(bail.descriptionLogement!),
+            ],
           ]),
 
           // ARTICLE 3 - Durée
@@ -286,6 +358,12 @@ class ContratBailPdfBuilder {
             kv('Provisions sur charges', money.format(bail.charges)),
             kv('Total mensuel', money.format(bail.totalMensuel)),
             kv('Échéance', 'Le ${bail.jourEcheance} de chaque mois'),
+            kv(
+              'Modalité',
+              bail.paiementTermeEchu
+                  ? 'À terme échu (en fin de période)'
+                  : 'À échoir (d\'avance)',
+            ),
             kv('Mode de paiement', bail.modePaiement.label),
             if (bail.rib != null && bail.rib!.isNotEmpty)
               kv('RIB du bailleur', bail.rib!),
@@ -301,6 +379,11 @@ class ContratBailPdfBuilder {
               '${bail.type.plafondDepotMois} mois de loyer hors charges pour '
               'ce type de bail.',
             ),
+            if (bail.modalitesRestitutionDepot != null &&
+                bail.modalitesRestitutionDepot!.isNotEmpty)
+              paragraph(
+                'Modalités de restitution : ${bail.modalitesRestitutionDepot!}',
+              ),
             if (bail.regularisationChargesAnnuelle)
               paragraph(
                 'Les charges feront l\'objet d\'une régularisation annuelle '
@@ -391,6 +474,16 @@ class ContratBailPdfBuilder {
             ),
           ]),
 
+          // Clauses particulières (catalogue activé + clauses personnalisées)
+          if (bail.clauses.where((c) => c.active).isNotEmpty)
+            section('Article 10 — Clauses particulières', [
+              for (final c in bail.clauses.where((c) => c.active)) ...[
+                pw.Text(c.titre, style: h2),
+                paragraph(c.contenu),
+                pw.SizedBox(height: 6),
+              ],
+            ]),
+
           // Mentions légales
           section('Mentions légales', [
             paragraph(
@@ -430,6 +523,17 @@ class ContratBailPdfBuilder {
                     '${d.type.label} — réalisé le ${dateFmt.format(d.dateRealisation)}'
                     '${d.resume.isNotEmpty ? ' (${d.resume})' : ''}'
                     '${d.estExpire ? ' — EXPIRÉ' : ''}'),
+            ]),
+
+          // Pièces jointes optionnelles
+          if (bail.assuranceFilePath != null ||
+              bail.annexesOptionnelles.isNotEmpty)
+            section('Annexes — Pièces jointes', [
+              if (bail.assuranceFilePath != null)
+                bullet(
+                    'Attestation d\'assurance du locataire : ${bail.assuranceFilePath!.split('/').last}'),
+              for (final a in bail.annexesOptionnelles)
+                bullet(a.split('/').last),
             ]),
         ],
       ),

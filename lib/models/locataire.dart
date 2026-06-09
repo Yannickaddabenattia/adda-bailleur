@@ -23,6 +23,13 @@ class Locataire {
   String? nouvelleAdresse;
   String? nouveauTelephone;
   String? nouvelEmail;
+
+  /// Date de naissance (requise pour figurer au contrat de bail).
+  DateTime? dateNaissance;
+
+  /// Adresse postale actuelle du locataire (requise pour le bail).
+  String? adresse;
+
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -43,6 +50,8 @@ class Locataire {
     this.nouvelleAdresse,
     this.nouveauTelephone,
     this.nouvelEmail,
+    this.dateNaissance,
+    this.adresse,
     required this.createdAt,
     required this.updatedAt,
   }) : contratBailPaths = contratBailPaths ?? <String>[];
@@ -62,6 +71,8 @@ class Locataire {
     String? nouvelleAdresse,
     String? nouveauTelephone,
     String? nouvelEmail,
+    DateTime? dateNaissance,
+    String? adresse,
   }) {
     final now = DateTime.now().toUtc();
     return Locataire(
@@ -86,6 +97,8 @@ class Locataire {
       nouvelEmail: nouvelEmail?.trim().isEmpty ?? true
           ? null
           : nouvelEmail!.trim().toLowerCase(),
+      dateNaissance: dateNaissance,
+      adresse: adresse?.trim().isEmpty ?? true ? null : adresse!.trim(),
       createdAt: now,
       updatedAt: now,
     );
@@ -136,6 +149,10 @@ class LocataireAdapter extends TypeAdapter<Locataire> {
       nouvelleAdresse: fields[15] as String?,
       nouveauTelephone: fields[16] as String?,
       nouvelEmail: fields[17] as String?,
+      dateNaissance: fields[18] == null
+          ? null
+          : DateTime.parse(fields[18] as String),
+      adresse: fields[19] as String?,
     );
   }
 
@@ -149,7 +166,7 @@ class LocataireAdapter extends TypeAdapter<Locataire> {
   @override
   void write(BinaryWriter writer, Locataire obj) {
     writer
-      ..writeByte(18)
+      ..writeByte(20)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -185,6 +202,10 @@ class LocataireAdapter extends TypeAdapter<Locataire> {
       ..writeByte(16)
       ..write(obj.nouveauTelephone)
       ..writeByte(17)
-      ..write(obj.nouvelEmail);
+      ..write(obj.nouvelEmail)
+      ..writeByte(18)
+      ..write(obj.dateNaissance?.toIso8601String())
+      ..writeByte(19)
+      ..write(obj.adresse);
   }
 }

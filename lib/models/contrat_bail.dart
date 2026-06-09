@@ -1,6 +1,10 @@
 import 'package:hive_ce/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import 'bail_template.dart';
+import 'clause.dart';
+import 'garant.dart';
+
 /// Type de bail couvert par l'application. Chaque type a ses propres durées
 /// minimales, plafonds de dépôt et clauses spécifiques.
 enum BailType {
@@ -175,6 +179,11 @@ class ContratBail {
   ModePaiement modePaiement;
   String? rib;
   int jourEcheance;
+
+  /// Loyer payable à **terme échu** (en fin de période) plutôt qu'à échoir
+  /// (d'avance). Défaut : false (à échoir, l'usage le plus courant).
+  bool paiementTermeEchu;
+
   double depotGarantie;
   bool regularisationChargesAnnuelle;
   double? fraisAgence;
@@ -220,8 +229,55 @@ class ContratBail {
   /// Notes libres du bailleur.
   String notes;
 
+  // ─── Champs ajoutés (Phase 1b) ───────────────────────────────────────────
+  /// Le locataire doit fournir une attestation d'assurance habitation.
+  bool attestationAssurance;
+
+  /// Chemin local du fichier d'attestation d'assurance (PDF/image), si fourni.
+  String? assuranceFilePath;
+
+  /// Modalités de restitution du dépôt de garantie (texte libre).
+  String? modalitesRestitutionDepot;
+
+  /// Description du logement pour le contrat (pièces, usage, équipements).
+  String? descriptionLogement;
+
+  /// Mention explicite que l'état des lieux d'entrée a été / sera réalisé.
+  bool mentionEtatDesLieux;
+
+  // ─── Champs ajoutés (Phase 2 : bailleur étendu + garants) ─────────────────
+  /// Adresse postale du bailleur (snapshot pour le contrat).
+  String? bailleurAdresse;
+  String? bailleurTelephone;
+
+  /// Le bailleur est une société (SCI, SARL…) plutôt qu'un particulier.
+  bool bailleurEstSociete;
+  String? bailleurRaisonSociale;
+  String? bailleurSiret;
+  String? bailleurRepresentant;
+
+  /// Garants (cautions) du bail.
+  List<Garant> garants;
+
+  /// Clauses du bail : clauses du catalogue activées + clauses personnalisées.
+  List<Clause> clauses;
+
+  /// Chemins locaux des pièces jointes optionnelles (règlement copro, photos,
+  /// plan, attestation d'assurance du bailleur, PV d'état des lieux…).
+  List<String> annexesOptionnelles;
+
   final DateTime createdAt;
   DateTime updatedAt;
+
+  // ─── Champs ajoutés (Phase Templates — juin 2026) ─────────────────────────
+  /// ID du template ayant servi à créer ce bail (système type
+  /// `BAIL_NU_RP_3A` ou UUID utilisateur). Null si bail créé sans template.
+  /// Conservé pour audit ; le bail reste indépendant du template après
+  /// création (modifier le template ne touche pas les bails existants).
+  String? templateSourceId;
+
+  /// Date et heure UTC à laquelle le template a été appliqué.
+  DateTime? templateAppliqueLe;
 
   ContratBail({
     required this.id,
@@ -246,6 +302,7 @@ class ContratBail {
     required this.modePaiement,
     this.rib,
     required this.jourEcheance,
+    this.paiementTermeEchu = false,
     required this.depotGarantie,
     required this.regularisationChargesAnnuelle,
     this.fraisAgence,
@@ -266,12 +323,31 @@ class ContratBail {
     List<String>? diagnosticIds,
     this.edlEntreeId,
     this.notes = '',
+    this.attestationAssurance = false,
+    this.assuranceFilePath,
+    this.modalitesRestitutionDepot,
+    this.descriptionLogement,
+    this.mentionEtatDesLieux = false,
+    this.bailleurAdresse,
+    this.bailleurTelephone,
+    this.bailleurEstSociete = false,
+    this.bailleurRaisonSociale,
+    this.bailleurSiret,
+    this.bailleurRepresentant,
+    List<Garant>? garants,
+    List<Clause>? clauses,
+    List<String>? annexesOptionnelles,
     required this.createdAt,
     required this.updatedAt,
+    this.templateSourceId,
+    this.templateAppliqueLe,
   })  : equipementsMeuble = equipementsMeuble ?? {},
         signaturesLocatairesPng = signaturesLocatairesPng ?? {},
         signaturesLocatairesAt = signaturesLocatairesAt ?? {},
-        diagnosticIds = diagnosticIds ?? <String>[];
+        diagnosticIds = diagnosticIds ?? <String>[],
+        garants = garants ?? <Garant>[],
+        clauses = clauses ?? <Clause>[],
+        annexesOptionnelles = annexesOptionnelles ?? <String>[];
 
   factory ContratBail.create({
     required BailType type,
@@ -325,6 +401,102 @@ class ContratBail {
       regularisationChargesAnnuelle: true,
       createdAt: now,
       updatedAt: now,
+    );
+  }
+
+  /// Crée un nouveau bail pré-rempli à partir d'un [BailTemplate].
+  ///
+  /// Les valeurs du template (type, durée, dépôt, préavis, clauses,
+  /// équipements meublé) sont copiées dans le bail. Le bail garde
+  /// `templateSourceId` et `templateAppliqueLe` pour audit.
+  ///
+  /// Les champs propres au logement (adresse, surface, nbPieces, loyer)
+  /// restent à fournir explicitement par l'appelant — ils ne viennent pas du
+  /// template (qui est agnostique du logement).
+  factory ContratBail.fromTemplate(
+    BailTemplate t, {
+    required String logementId,
+    required List<String> locataireIds,
+    required String adresseLogement,
+    required double surfaceM2,
+    required int nbPieces,
+    required DateTime dateDebut,
+    required double loyerHC,
+    required double charges,
+    ModePaiement modePaiement = ModePaiement.virement,
+    int jourEcheance = 5,
+    String? rib,
+    String? etage,
+    String reference = '',
+  }) {
+    final now = DateTime.now().toUtc();
+    final dureeMois = t.dureeDefautMois;
+    final dateFin = DateTime(
+      dateDebut.year + ((dateDebut.month - 1 + dureeMois) ~/ 12),
+      ((dateDebut.month - 1 + dureeMois) % 12) + 1,
+      dateDebut.day,
+    );
+
+    // Dépôt : respecte la règle d'interdiction (bail mobilité) sinon
+    // multiplicateur du loyer HC.
+    final double depot = t.depotInterdit
+        ? 0.0
+        : (loyerHC * t.depotMultiplicateurLoyer);
+
+    // Clauses : on instancie des copies indépendantes pour que le bail
+    // soit autonome (modifier le template ensuite ne touche pas ce bail).
+    final clausesDuTemplate = <Clause>[
+      // Clauses du catalogue pré-cochées
+      for (final id in t.clausesPreCochees)
+        ClauseCatalogue.standard.firstWhere(
+          (c) => c.id == id,
+          orElse: () => Clause(
+            id: id,
+            titre: '',
+            contenu: '',
+            categorie: ClauseCategorie.personnalisee,
+            active: false,
+          ),
+        ).copy(),
+      // Clauses personnalisées embarquées dans le template
+      ...t.clausesPersoIncluses.map((c) => c.copy()),
+    ].where((c) => c.titre.isNotEmpty).toList();
+
+    return ContratBail(
+      id: const Uuid().v4(),
+      reference: reference.isEmpty
+          ? 'BAIL-${now.year}-${now.millisecondsSinceEpoch.toString().substring(8)}'
+          : reference,
+      type: t.typeBail,
+      statut: BailStatus.brouillon,
+      logementId: logementId,
+      locataireIds: List<String>.from(locataireIds),
+      adresseLogement: adresseLogement,
+      surfaceM2: surfaceM2,
+      nbPieces: nbPieces,
+      etage: etage,
+      dateDebut: dateDebut,
+      dureeMois: dureeMois,
+      dateFin: dateFin,
+      renouvellementTacite: t.renouvellementTacite,
+      preavisBailleurMois: t.preavisBailleurMois,
+      preavisLocataireMois: t.preavisLocataireMois,
+      loyerHC: loyerHC,
+      charges: charges,
+      modePaiement: modePaiement,
+      rib: rib,
+      jourEcheance: jourEcheance,
+      depotGarantie: depot,
+      regularisationChargesAnnuelle: !t.clausesPreCochees
+          .contains('cat_v2_forfait_charges'),
+      equipementsMeuble: t.equipementsMeubleDefauts == null
+          ? null
+          : Map<String, bool>.from(t.equipementsMeubleDefauts!),
+      clauses: clausesDuTemplate,
+      createdAt: now,
+      updatedAt: now,
+      templateSourceId: t.id,
+      templateAppliqueLe: now,
     );
   }
 
@@ -413,6 +585,31 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
       diagnosticIds: (f[39] as List?)?.cast<String>() ?? <String>[],
       edlEntreeId: f[40] as String?,
       notes: (f[41] as String?) ?? '',
+      attestationAssurance: (f[44] as bool?) ?? false,
+      assuranceFilePath: f[45] as String?,
+      modalitesRestitutionDepot: f[46] as String?,
+      descriptionLogement: f[47] as String?,
+      mentionEtatDesLieux: (f[48] as bool?) ?? false,
+      bailleurAdresse: f[49] as String?,
+      bailleurTelephone: f[50] as String?,
+      bailleurEstSociete: (f[51] as bool?) ?? false,
+      bailleurRaisonSociale: f[52] as String?,
+      bailleurSiret: f[53] as String?,
+      bailleurRepresentant: f[54] as String?,
+      garants: (f[55] as List?)
+              ?.map((e) => Garant.fromMap((e as Map).cast<String, dynamic>()))
+              .toList() ??
+          <Garant>[],
+      clauses: (f[56] as List?)
+              ?.map((e) => Clause.fromMap((e as Map).cast<String, dynamic>()))
+              .toList() ??
+          <Clause>[],
+      annexesOptionnelles: (f[57] as List?)?.cast<String>() ?? <String>[],
+      paiementTermeEchu: (f[58] as bool?) ?? false,
+      templateSourceId: f[59] as String?,
+      templateAppliqueLe: f[60] is String
+          ? DateTime.parse(f[60] as String)
+          : null,
       createdAt: DateTime.parse(f[42] as String),
       updatedAt: DateTime.parse(f[43] as String),
     );
@@ -421,7 +618,7 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
   @override
   void write(BinaryWriter writer, ContratBail obj) {
     writer
-      ..writeByte(44)
+      ..writeByte(61)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -509,6 +706,40 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
       ..writeByte(42)
       ..write(obj.createdAt.toIso8601String())
       ..writeByte(43)
-      ..write(obj.updatedAt.toIso8601String());
+      ..write(obj.updatedAt.toIso8601String())
+      ..writeByte(44)
+      ..write(obj.attestationAssurance)
+      ..writeByte(45)
+      ..write(obj.assuranceFilePath)
+      ..writeByte(46)
+      ..write(obj.modalitesRestitutionDepot)
+      ..writeByte(47)
+      ..write(obj.descriptionLogement)
+      ..writeByte(48)
+      ..write(obj.mentionEtatDesLieux)
+      ..writeByte(49)
+      ..write(obj.bailleurAdresse)
+      ..writeByte(50)
+      ..write(obj.bailleurTelephone)
+      ..writeByte(51)
+      ..write(obj.bailleurEstSociete)
+      ..writeByte(52)
+      ..write(obj.bailleurRaisonSociale)
+      ..writeByte(53)
+      ..write(obj.bailleurSiret)
+      ..writeByte(54)
+      ..write(obj.bailleurRepresentant)
+      ..writeByte(55)
+      ..write(obj.garants.map((g) => g.toMap()).toList())
+      ..writeByte(56)
+      ..write(obj.clauses.map((c) => c.toMap()).toList())
+      ..writeByte(57)
+      ..write(obj.annexesOptionnelles)
+      ..writeByte(58)
+      ..write(obj.paiementTermeEchu)
+      ..writeByte(59)
+      ..write(obj.templateSourceId)
+      ..writeByte(60)
+      ..write(obj.templateAppliqueLe?.toIso8601String());
   }
 }
