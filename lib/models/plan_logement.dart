@@ -398,6 +398,80 @@ class PlanAnnotation {
       );
 }
 
+/// Style de tracé d'un [FreeWall]. Détermine la couleur, l'épaisseur et le
+/// motif au rendu, ainsi que le libellé par défaut.
+enum FreeWallStyle {
+  /// Mur réel classique (trait plein noir).
+  wall,
+
+  /// Mur virtuel : séparation entre deux espaces ouverts (pointillé).
+  virtualWall,
+
+  /// Clôture grillagée (rigide ou souple).
+  fenceGrid,
+
+  /// Palissade bois (panneaux pleins).
+  fenceWood,
+
+  /// Clôture PVC / composite.
+  fencePvc,
+
+  /// Mur en pierre / parpaings.
+  wallStone,
+
+  /// Muret bas (≤ 1 m).
+  wallLow,
+
+  /// Haie végétale.
+  hedge,
+
+  /// Portail battant.
+  gate,
+
+  /// Portail coulissant.
+  gateSliding,
+
+  /// Portillon (passage piéton).
+  gatePedestrian,
+
+  /// Garde-corps / grille fer forgé.
+  railing;
+
+  /// Libellé court affiché à l'utilisateur.
+  String get label {
+    switch (this) {
+      case FreeWallStyle.wall:
+        return 'Mur';
+      case FreeWallStyle.virtualWall:
+        return 'Mur virtuel';
+      case FreeWallStyle.fenceGrid:
+        return 'Clôture grillage';
+      case FreeWallStyle.fenceWood:
+        return 'Palissade bois';
+      case FreeWallStyle.fencePvc:
+        return 'Clôture PVC';
+      case FreeWallStyle.wallStone:
+        return 'Mur pierre / parpaing';
+      case FreeWallStyle.wallLow:
+        return 'Muret bas';
+      case FreeWallStyle.hedge:
+        return 'Haie';
+      case FreeWallStyle.gate:
+        return 'Portail battant';
+      case FreeWallStyle.gateSliding:
+        return 'Portail coulissant';
+      case FreeWallStyle.gatePedestrian:
+        return 'Portillon';
+      case FreeWallStyle.railing:
+        return 'Garde-corps / grille';
+    }
+  }
+
+  /// `true` si le style représente un mur intérieur (vs un élément extérieur).
+  bool get isInterior =>
+      this == FreeWallStyle.wall || this == FreeWallStyle.virtualWall;
+}
+
 /// Un mur libre tracé hors d'une pièce, déplaçable indépendamment. Numéroté
 /// automatiquement selon sa pièce de référence (la plus proche du milieu du
 /// mur) sous la forme « Mur Salon M12 » sauf si l'utilisateur le renomme.
@@ -415,7 +489,14 @@ class FreeWall {
   /// `true` = mur virtuel (ouverture / séparation visuelle entre 2 espaces
   /// ouverts) : rendu en pointillé, nommé "Séparation A / B". `false` = mur
   /// réel classique (trait plein, nommé "Mur {pièce} M{N}").
+  /// Conservé pour rétro-compat avec les anciens .adlb : si `style` est
+  /// absent à la lecture, on retombe sur `wall` ou `virtualWall` selon ce
+  /// flag.
   bool isVirtual;
+
+  /// Style de tracé (mur, clôture, portail, haie…). Par défaut [wall]
+  /// pour rester compatible avec les anciens plans.
+  FreeWallStyle style;
 
   FreeWall({
     required this.id,
@@ -425,6 +506,7 @@ class FreeWall {
     required this.y2,
     this.customLabel,
     this.isVirtual = false,
+    this.style = FreeWallStyle.wall,
   });
 
   factory FreeWall.create({
@@ -433,6 +515,7 @@ class FreeWall {
     required double x2,
     required double y2,
     bool isVirtual = false,
+    FreeWallStyle style = FreeWallStyle.wall,
   }) =>
       FreeWall(
         id: const Uuid().v4(),
@@ -440,7 +523,8 @@ class FreeWall {
         y1: y1,
         x2: x2,
         y2: y2,
-        isVirtual: isVirtual,
+        isVirtual: isVirtual || style == FreeWallStyle.virtualWall,
+        style: style,
       );
 
   Map<String, dynamic> toMap() => {
@@ -451,17 +535,30 @@ class FreeWall {
         'y2': y2,
         'customLabel': customLabel,
         'isVirtual': isVirtual,
+        'style': style.name,
       };
 
-  factory FreeWall.fromMap(Map<String, dynamic> m) => FreeWall(
-        id: m['id'] as String,
-        x1: (m['x1'] as num).toDouble(),
-        y1: (m['y1'] as num).toDouble(),
-        x2: (m['x2'] as num).toDouble(),
-        y2: (m['y2'] as num).toDouble(),
-        customLabel: m['customLabel'] as String?,
-        isVirtual: (m['isVirtual'] as bool?) ?? false,
-      );
+  factory FreeWall.fromMap(Map<String, dynamic> m) {
+    final virtual = (m['isVirtual'] as bool?) ?? false;
+    final styleName = m['style'] as String?;
+    final resolvedStyle = styleName == null
+        ? (virtual ? FreeWallStyle.virtualWall : FreeWallStyle.wall)
+        : FreeWallStyle.values.firstWhere(
+            (s) => s.name == styleName,
+            orElse: () =>
+                virtual ? FreeWallStyle.virtualWall : FreeWallStyle.wall,
+          );
+    return FreeWall(
+      id: m['id'] as String,
+      x1: (m['x1'] as num).toDouble(),
+      y1: (m['y1'] as num).toDouble(),
+      x2: (m['x2'] as num).toDouble(),
+      y2: (m['y2'] as num).toDouble(),
+      customLabel: m['customLabel'] as String?,
+      isVirtual: virtual,
+      style: resolvedStyle,
+    );
+  }
 }
 
 /// Un plan attaché à un logement, soit une image importée, soit un dessin
@@ -827,6 +924,15 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
     final f = <int, dynamic>{
       for (var i = 0; i < n; i++) reader.readByte(): reader.read(),
     };
+    final virtual = (f[6] as bool?) ?? false;
+    final styleName = f[7] as String?;
+    final resolvedStyle = styleName == null
+        ? (virtual ? FreeWallStyle.virtualWall : FreeWallStyle.wall)
+        : FreeWallStyle.values.firstWhere(
+            (s) => s.name == styleName,
+            orElse: () =>
+                virtual ? FreeWallStyle.virtualWall : FreeWallStyle.wall,
+          );
     return FreeWall(
       id: f[0] as String,
       x1: (f[1] as num).toDouble(),
@@ -834,7 +940,8 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
       x2: (f[3] as num).toDouble(),
       y2: (f[4] as num).toDouble(),
       customLabel: f[5] as String?,
-      isVirtual: (f[6] as bool?) ?? false,
+      isVirtual: virtual,
+      style: resolvedStyle,
     );
   }
 
@@ -842,7 +949,9 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
   void write(BinaryWriter writer, FreeWall obj) {
     final hasLabel = obj.customLabel != null;
     final hasVirtual = obj.isVirtual;
-    final count = 5 + (hasLabel ? 1 : 0) + (hasVirtual ? 1 : 0);
+    final hasStyle = obj.style != FreeWallStyle.wall;
+    final count =
+        5 + (hasLabel ? 1 : 0) + (hasVirtual ? 1 : 0) + (hasStyle ? 1 : 0);
     writer
       ..writeByte(count)
       ..writeByte(0)
@@ -864,6 +973,11 @@ class FreeWallAdapter extends TypeAdapter<FreeWall> {
       writer
         ..writeByte(6)
         ..write(true);
+    }
+    if (hasStyle) {
+      writer
+        ..writeByte(7)
+        ..write(obj.style.name);
     }
   }
 }

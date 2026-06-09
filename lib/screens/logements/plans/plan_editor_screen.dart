@@ -454,15 +454,33 @@ class _PlanEditorScreenState extends State<PlanEditorScreen> {
                     if (state == null) return;
                     state.clearCalibration();
                   },
-                  onStartDrawWall: () {
+                  onStartDrawWall: () async {
                     final state = _drawerKey.currentState;
                     if (state == null) return;
-                    state.startDrawWall();
+                    if (plan.kind == PlanKind.terrain) {
+                      final style = await _pickFreeWallStyle(
+                        context,
+                        kind: _StyleKind.fenceOrWall,
+                      );
+                      if (style == null) return;
+                      state.startDrawWall(style: style);
+                    } else {
+                      state.startDrawWall();
+                    }
                   },
-                  onStartDrawVirtualWall: () {
+                  onStartDrawVirtualWall: () async {
                     final state = _drawerKey.currentState;
                     if (state == null) return;
-                    state.startDrawWall(virtual: true);
+                    if (plan.kind == PlanKind.terrain) {
+                      final style = await _pickFreeWallStyle(
+                        context,
+                        kind: _StyleKind.gate,
+                      );
+                      if (style == null) return;
+                      state.startDrawWall(style: style);
+                    } else {
+                      state.startDrawWall(virtual: true);
+                    }
                   },
                   onAlignRooms: () {
                     final state = _drawerKey.currentState;
@@ -1015,6 +1033,29 @@ class _PlanSidebar extends StatelessWidget {
     _QuickRoom('Pièce en T', Icons.shape_line_outlined),
   ];
 
+  /// Palette terrain affichée dans la sidebar (subset court de
+  /// `_DrawerViewState._terrainItems` — les items prioritaires pour un EDL).
+  static const _quickTerrainItems = <_QuickRoom>[
+    _QuickRoom('Maison', Icons.home_outlined),
+    _QuickRoom('Garage', Icons.garage_outlined),
+    _QuickRoom('Terrasse', Icons.deck_outlined),
+    _QuickRoom('Piscine', Icons.pool_outlined),
+    _QuickRoom('Cabanon', Icons.cabin_outlined),
+    _QuickRoom('Abri jardin', Icons.cabin),
+    _QuickRoom('Spa', Icons.hot_tub_outlined),
+    _QuickRoom('Allée', Icons.route_outlined),
+    _QuickRoom('Parking', Icons.local_parking_outlined),
+    _QuickRoom('Arbre', Icons.park_outlined),
+    _QuickRoom('Potager', Icons.eco_outlined),
+    _QuickRoom('BBQ', Icons.outdoor_grill_outlined),
+    _QuickRoom('Boîte aux lettres', Icons.mail_outline),
+    _QuickRoom('Local technique', Icons.settings_outlined),
+    _QuickRoom('Cuve fioul/GPL', Icons.propane_tank_outlined),
+    _QuickRoom('Fosse septique', Icons.water_damage_outlined),
+    _QuickRoom('Borne VE', Icons.ev_station_outlined),
+    _QuickRoom('PAC / clim ext.', Icons.ac_unit_outlined),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final wallPhotos = plan.wallPhotos
@@ -1033,7 +1074,30 @@ class _PlanSidebar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isTerrain) ...[
+          if (isTerrain) ...[
+            const _SectionHeader('Éléments du jardin'),
+            const SizedBox(height: 10),
+            _RoomsGrid(
+              rooms: _quickTerrainItems,
+              onPick: onAddRoom,
+            ),
+            const SizedBox(height: 12),
+            _DashedAddButton(
+              label: '✏️ Tracer une zone (pelouse, dalle…)',
+              onTap: onAddFormeLibre,
+            ),
+            const SizedBox(height: 8),
+            _DashedAddButton(
+              label: '🧱 Tracer une clôture / un mur',
+              onTap: onStartDrawWall,
+            ),
+            const SizedBox(height: 8),
+            _DashedAddButton(
+              label: '🚪 Placer un portail',
+              onTap: onStartDrawVirtualWall,
+            ),
+            const SizedBox(height: 22),
+          ] else ...[
             const _SectionHeader('Ajouter une pièce'),
             const SizedBox(height: 10),
             _RoomsGrid(
@@ -1100,7 +1164,7 @@ class _PlanSidebar extends StatelessWidget {
           const _SectionHeader('Photos par mur'),
           const SizedBox(height: 10),
           if (wallEntries.isEmpty)
-            const _PhotosEmpty()
+            _PhotosEmpty(inEdl: etatId != null)
           else
             ...wallEntries.map((e) {
               final photos = e.value;
@@ -1542,7 +1606,10 @@ class _ActionDot extends StatelessWidget {
 }
 
 class _PhotosEmpty extends StatelessWidget {
-  const _PhotosEmpty();
+  /// `true` si l'éditeur est ouvert dans un contexte état des lieux (où la
+  /// prise de photos est autorisée).
+  final bool inEdl;
+  const _PhotosEmpty({this.inEdl = false});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1553,9 +1620,11 @@ class _PhotosEmpty extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.divider),
       ),
-      child: const Text(
-        'Appui long sur un mur (M1, M2…) pour prendre une photo.',
-        style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+      child: Text(
+        inEdl
+            ? 'Appui long sur un mur (M1, M2…) pour prendre une photo.'
+            : 'Les photos de murs se prennent lors de l\'état des lieux.',
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
       ),
     );
   }
@@ -1905,6 +1974,19 @@ class _DrawerViewState extends State<_DrawerView> {
   /// pas en mode wall draw ou pas encore de mouvement détecté.
   Offset? _drawWallHover;
 
+  /// Magnétisme orthogonal du tracé de mur : quand actif (défaut), un mur
+  /// dont la direction est proche de l'horizontale ou de la verticale est
+  /// redressé automatiquement sur cet axe. L'accrochage à une géométrie
+  /// existante (coin de pièce, extrémité de mur) reste prioritaire. Peut
+  /// être désactivé depuis le bandeau pour tracer un mur en diagonale.
+  bool _drawWallOrtho = true;
+
+  /// Tolérance du magnétisme orthogonal, exprimée en POURCENT de pente : un
+  /// segment est collé sur l'horizontale (ou la verticale) tant que son écart
+  /// perpendiculaire reste sous ce pourcentage de sa longueur sur l'axe
+  /// dominant (mesuré à l'écran). 5 % ≈ 2,9°.
+  static const double _orthoSnapTolerancePercent = 5.0;
+
   /// Etat du drag en cours sur un mur libre sélectionné.
   _WallDragMode? _wallDragMode;
   Offset? _wallDragStart;
@@ -2039,15 +2121,25 @@ class _DrawerViewState extends State<_DrawerView> {
     _TerrainItem('Piscine', Icons.pool_outlined, Color(0xFF93C5FD), 0.20, 0.14),
     _TerrainItem('Terrasse', Icons.deck_outlined, Color(0xFFFED7AA), 0.20, 0.14),
     _TerrainItem('Cabanon', Icons.cabin_outlined, Color(0xFFD6BFA0), 0.10, 0.10),
+    _TerrainItem('Abri jardin', Icons.cabin, Color(0xFFD6BFA0), 0.10, 0.10),
     _TerrainItem('Allée', Icons.route_outlined, Color(0xFFE5E7EB), 0.30, 0.05),
     _TerrainItem('Parking', Icons.local_parking_outlined, Color(0xFFCBD5E1), 0.18, 0.10),
-    _TerrainItem('Clôture', Icons.fence_outlined, Color(0xFF94A3B8), 0.30, 0.02),
-    _TerrainItem('Portail', Icons.door_sliding_outlined, Color(0xFFFCD34D), 0.10, 0.02),
     _TerrainItem('Arbre', Icons.park_outlined, Color(0xFFA7F3D0), 0.07, 0.07),
     _TerrainItem('Végétation', Icons.local_florist_outlined, Color(0xFFD9F99D), 0.14, 0.10),
     _TerrainItem('Potager', Icons.eco_outlined, Color(0xFFBBF7D0), 0.15, 0.10),
     _TerrainItem('Puits', Icons.water_drop_outlined, Color(0xFFBAE6FD), 0.05, 0.05),
     _TerrainItem('BBQ', Icons.outdoor_grill_outlined, Color(0xFFCBD5E1), 0.06, 0.06),
+    _TerrainItem('Spa', Icons.hot_tub_outlined, Color(0xFF93C5FD), 0.08, 0.08),
+    _TerrainItem('Local technique', Icons.settings_outlined, Color(0xFFE5E7EB), 0.06, 0.06),
+    _TerrainItem('Cuve fioul/GPL', Icons.propane_tank_outlined, Color(0xFFFCA5A5), 0.07, 0.07),
+    _TerrainItem('Fosse septique', Icons.water_damage_outlined, Color(0xFFA7F3D0), 0.08, 0.08),
+    _TerrainItem('Récup. eau', Icons.opacity_outlined, Color(0xFFBAE6FD), 0.05, 0.05),
+    _TerrainItem('PAC / clim ext.', Icons.ac_unit_outlined, Color(0xFFE0F2FE), 0.05, 0.04),
+    _TerrainItem('Borne VE', Icons.ev_station_outlined, Color(0xFFBBF7D0), 0.04, 0.04),
+    _TerrainItem('Compteur eau', Icons.speed_outlined, Color(0xFFE5E7EB), 0.04, 0.04),
+    _TerrainItem('Boîte aux lettres', Icons.mail_outline, Color(0xFFFCD34D), 0.04, 0.04),
+    _TerrainItem('Robinet ext.', Icons.water_drop_outlined, Color(0xFFBAE6FD), 0.03, 0.03),
+    _TerrainItem('Éclairage ext.', Icons.light_outlined, Color(0xFFFEF3C7), 0.04, 0.04),
   ];
 
   bool get _isTerrain => widget.plan.kind == PlanKind.terrain;
@@ -2189,6 +2281,7 @@ class _DrawerViewState extends State<_DrawerView> {
                                       p1: _drawWallPoint1,
                                       hover: _drawWallHover,
                                       isVirtual: _drawWallVirtual,
+                                      orthoActive: _drawWallOrtho,
                                       existingEdges:
                                           _collectExistingEdges(widget.plan),
                                     ),
@@ -2229,7 +2322,9 @@ class _DrawerViewState extends State<_DrawerView> {
                   child: _DrawWallBanner(
                     point1Placed: _drawWallPoint1 != null,
                     isVirtual: _drawWallVirtual,
+                    orthoOn: _drawWallOrtho,
                     onToggleVirtual: toggleDrawWallVirtual,
+                    onToggleOrtho: toggleDrawWallOrtho,
                     onCancel: cancelDrawWall,
                   ),
                 ),
@@ -2811,8 +2906,10 @@ class _DrawerViewState extends State<_DrawerView> {
       RoomShape r, _WallSide side, int wallNumber) async {
     final photos = _photosFor(r.id, side);
     final ro = widget.readOnly;
-    final canCapture = !ro || widget.allowWallPhotoCapture;
-    if (!canCapture && photos.isEmpty) return;
+    // La prise de photo de mur n'est autorisée que depuis un état des lieux
+    // (contexte EDL), jamais lors de la création/édition d'un plan.
+    final canCapture = widget.allowWallPhotoCapture && widget.etatId != null;
+    if (!canCapture && photos.isEmpty && ro) return;
     final isHidden = r.hiddenWalls.contains(side.name);
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -3792,8 +3889,9 @@ class _DrawerViewState extends State<_DrawerView> {
       RoomShape r, int edgeIndex, int wallNumber) async {
     final photos = _photosForEdge(r.id, edgeIndex);
     final ro = widget.readOnly;
-    final canCapture = !ro || widget.allowWallPhotoCapture;
-    if (!canCapture && photos.isEmpty) return;
+    // Capture réservée au contexte état des lieux.
+    final canCapture = widget.allowWallPhotoCapture && widget.etatId != null;
+    if (!canCapture && photos.isEmpty && ro) return;
     final hiddenKey = 'edge:$edgeIndex';
     final isHidden = r.hiddenWalls.contains(hiddenKey);
     final action = await showModalBottomSheet<String>(
@@ -4117,11 +4215,17 @@ class _DrawerViewState extends State<_DrawerView> {
   //   Mode « Tracer un mur » + sélection/drag de murs libres
   // ───────────────────────────────────────────────────────────────────────
 
-  void startDrawWall({bool virtual = false}) {
+  /// Style en attente pour le prochain tracé de `FreeWall`. Réinitialisé à
+  /// `null` après création du mur. Utilisé par la sidebar terrain pour
+  /// imposer un style (clôture, portail…) au démarrage du tracé.
+  FreeWallStyle? _pendingFreeWallStyle;
+
+  void startDrawWall({bool virtual = false, FreeWallStyle? style}) {
     if (widget.readOnly) return;
     setState(() {
       _drawWallMode = true;
-      _drawWallVirtual = virtual;
+      _drawWallVirtual = virtual || style == FreeWallStyle.virtualWall;
+      _pendingFreeWallStyle = style;
       _drawWallPoint1 = null;
       _drawWallHover = null;
       _freeDrawMode = false;
@@ -4147,6 +4251,11 @@ class _DrawerViewState extends State<_DrawerView> {
     setState(() => _drawWallVirtual = !_drawWallVirtual);
   }
 
+  /// Active/désactive le magnétisme orthogonal du tracé de mur.
+  void toggleDrawWallOrtho() {
+    setState(() => _drawWallOrtho = !_drawWallOrtho);
+  }
+
   /// Bascule l'état "mur virtuel" du mur libre actuellement sélectionné.
   void toggleSelectedWallVirtual() {
     final w = _selectedWall();
@@ -4160,14 +4269,14 @@ class _DrawerViewState extends State<_DrawerView> {
       (pos.dx / canvas.width).clamp(0.0, 1.0),
       (pos.dy / canvas.height).clamp(0.0, 1.0),
     );
-    final snapped = _snapToExistingGeometry(norm);
     if (_drawWallPoint1 == null) {
-      setState(() => _drawWallPoint1 = snapped);
+      setState(() => _drawWallPoint1 = _snapToExistingGeometry(norm));
       return;
     }
-    // 2ᵉ point : crée le mur si distance > minuscule.
+    // 2ᵉ point : accroche aux géométries existantes, sinon aimante à
+    // l'horizontale/verticale. Crée le mur si distance > minuscule.
     final p1 = _drawWallPoint1!;
-    final p2 = snapped;
+    final p2 = _resolveWallEndpoint(p1, norm, canvas);
     if ((p2 - p1).distance < 0.01) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mur trop court — réessaie.')),
@@ -4181,11 +4290,14 @@ class _DrawerViewState extends State<_DrawerView> {
       x2: p2.dx,
       y2: p2.dy,
       isVirtual: _drawWallVirtual,
+      style: _pendingFreeWallStyle ??
+          (_drawWallVirtual ? FreeWallStyle.virtualWall : FreeWallStyle.wall),
     );
     setState(() {
       widget.plan.freeWalls.add(wall);
       _drawWallMode = false;
       _drawWallPoint1 = null;
+      _pendingFreeWallStyle = null;
     });
 
     // Si le mur est virtuel et coupe une pièce existante en 2, on scinde
@@ -4220,7 +4332,12 @@ class _DrawerViewState extends State<_DrawerView> {
   /// sur les murs des pièces voisines (ex. un couloir bordé par 2 chambres
   /// + 1 mur simple). Si un cycle est trouvé, crée une pièce polygonale.
   bool _maybeFormRoomFromWalls(FreeWall newWall) {
-    const tol = 0.022;
+    // Tolérance de jonction entre extrémités de murs pour détecter un
+    // cycle fermé. Doit être > au rayon de snap (`_freeDrawSnapRadius` =
+    // 0,02) pour absorber l'imprécision tactile entre 2 taps qui n'ont
+    // pas snappé sur le même sommet : sur petit écran Android (Crosscall),
+    // un seuil trop strict empêchait la détection de la pièce fermée.
+    const tol = 0.04;
     bool eq(double a, double b, double c, double d) =>
         math.sqrt((a - c) * (a - c) + (b - d) * (b - d)) < tol;
 
@@ -4572,12 +4689,27 @@ class _DrawerViewState extends State<_DrawerView> {
     setState(() {
       switch (_wallDragMode) {
         case _WallDragMode.endpoint1:
-          w.x1 = (s.x1 + dx).clamp(0.0, 1.0);
-          w.y1 = (s.y1 + dy).clamp(0.0, 1.0);
+          // Accroche au coin/côté d'une autre pièce (ou d'un autre mur) en
+          // priorité, sinon aimante à l'horizontale/verticale par rapport à
+          // l'autre extrémité.
+          final p1 = _resolveWallEndpoint(
+            Offset(s.x2, s.y2),
+            Offset((s.x1 + dx).clamp(0.0, 1.0), (s.y1 + dy).clamp(0.0, 1.0)),
+            canvas,
+            excludeWallId: w.id,
+          );
+          w.x1 = p1.dx;
+          w.y1 = p1.dy;
           break;
         case _WallDragMode.endpoint2:
-          w.x2 = (s.x2 + dx).clamp(0.0, 1.0);
-          w.y2 = (s.y2 + dy).clamp(0.0, 1.0);
+          final p2 = _resolveWallEndpoint(
+            Offset(s.x1, s.y1),
+            Offset((s.x2 + dx).clamp(0.0, 1.0), (s.y2 + dy).clamp(0.0, 1.0)),
+            canvas,
+            excludeWallId: w.id,
+          );
+          w.x2 = p2.dx;
+          w.y2 = p2.dy;
           break;
         case _WallDragMode.body:
           // Translation : on déplace les 2 extrémités du même delta, en
@@ -4617,8 +4749,8 @@ class _DrawerViewState extends State<_DrawerView> {
   /// EDL pour documenter visuellement une cloison ajoutée).
   Future<void> _onFreeWallLongPress(FreeWall w) async {
     final photos = _photosForFreeWall(w.id);
-    final ro = widget.readOnly;
-    final canCapture = !ro || widget.allowWallPhotoCapture;
+    // Capture réservée au contexte état des lieux.
+    final canCapture = widget.allowWallPhotoCapture && widget.etatId != null;
     if (!canCapture && photos.isEmpty) return;
     final label = widget.plan.labelForWall(w);
     final action = await showModalBottomSheet<String>(
@@ -4909,21 +5041,35 @@ class _DrawerViewState extends State<_DrawerView> {
   /// Met à jour la position d'aperçu (sur desktop, via MouseRegion).
   void _updateFreeDrawHover(Offset pos, Size canvas) {
     if (!_freeDrawMode) return;
-    setState(() {
-      _freeDrawHover = Offset(
-        (pos.dx / canvas.width).clamp(0.0, 1.0),
-        (pos.dy / canvas.height).clamp(0.0, 1.0),
-      );
-    });
+    final raw = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
+    // L'aperçu reflète l'accroche aux géométries et le redressement ortho,
+    // comme le fera la pose effective du sommet.
+    Offset p = _snapToExistingGeometry(raw);
+    if (_freeDrawPoints.isNotEmpty) {
+      if (_freeDrawOrthoLock) {
+        p = _applyOrthoLock(_freeDrawPoints.last, p);
+      } else if (p == raw) {
+        p = _snapOrthoSoft(_freeDrawPoints.last, p, canvas);
+      }
+    }
+    setState(() => _freeDrawHover = p);
   }
 
   void _updateDrawWallHover(Offset pos, Size canvas) {
     if (!_drawWallMode) return;
+    final raw = Offset(
+      (pos.dx / canvas.width).clamp(0.0, 1.0),
+      (pos.dy / canvas.height).clamp(0.0, 1.0),
+    );
     setState(() {
-      _drawWallHover = Offset(
-        (pos.dx / canvas.width).clamp(0.0, 1.0),
-        (pos.dy / canvas.height).clamp(0.0, 1.0),
-      );
+      // Avant le 1ᵉʳ point, pas d'aperçu : on garde la position brute.
+      // Après, l'aperçu montre déjà le mur aimanté (H/V ou accroché).
+      _drawWallHover = _drawWallPoint1 == null
+          ? raw
+          : _resolveWallEndpoint(_drawWallPoint1!, raw, canvas);
     });
   }
 
@@ -4948,9 +5094,15 @@ class _DrawerViewState extends State<_DrawerView> {
     // 1) Snap aux sommets et murs existants.
     Offset point = _snapToExistingGeometry(raw);
 
-    // 2) Contrainte d'angle (multiples de 45°) relative au sommet précédent.
-    if (_freeDrawOrthoLock && _freeDrawPoints.isNotEmpty) {
-      point = _applyOrthoLock(_freeDrawPoints.last, point);
+    // 2) Redressement orthogonal relatif au sommet précédent : verrou strict
+    //    si activé, sinon magnétisme doux quand le point n'est pas déjà
+    //    accroché à une géométrie existante.
+    if (_freeDrawPoints.isNotEmpty) {
+      if (_freeDrawOrthoLock) {
+        point = _applyOrthoLock(_freeDrawPoints.last, point);
+      } else if (point == raw) {
+        point = _snapOrthoSoft(_freeDrawPoints.last, point, canvas);
+      }
     }
 
     // 3) Si le dernier sommet posé ET le sommet courant correspondent tous
@@ -5019,7 +5171,7 @@ class _DrawerViewState extends State<_DrawerView> {
   /// Cherche un point d'accrochage parmi les sommets puis les arêtes des
   /// pièces existantes ET les extrémités/segments des murs libres.
   /// Retourne le point d'accrochage si trouvé, sinon `p`.
-  Offset _snapToExistingGeometry(Offset p) {
+  Offset _snapToExistingGeometry(Offset p, {String? excludeWallId}) {
     Offset best = p;
     double bestDist = _freeDrawSnapRadius;
 
@@ -5038,6 +5190,7 @@ class _DrawerViewState extends State<_DrawerView> {
     //    de murs : sans ce snap, un nouveau mur ne s'accroche pas
     //    exactement à un coin déjà tracé et la détection de cycle échoue.
     for (final w in widget.plan.freeWalls) {
+      if (w.id == excludeWallId) continue;
       for (final c in [Offset(w.x1, w.y1), Offset(w.x2, w.y2)]) {
         final d = (p - c).distance;
         if (d < bestDist) {
@@ -5064,6 +5217,7 @@ class _DrawerViewState extends State<_DrawerView> {
       }
     }
     for (final w in widget.plan.freeWalls) {
+      if (w.id == excludeWallId) continue;
       final proj = _projectOnSegment(
           p, Offset(w.x1, w.y1), Offset(w.x2, w.y2));
       if (proj == null) continue;
@@ -5133,6 +5287,41 @@ class _DrawerViewState extends State<_DrawerView> {
     }
     // Vertical : dx = 0, on garde dy.
     return Offset(last.dx, cur.dy);
+  }
+
+  /// Magnétisme orthogonal « doux ». Si la direction `last → cur` est, à
+  /// l'écran, suffisamment proche de l'horizontale ou de la verticale (écart
+  /// perpendiculaire sous `tolerancePercent` % de la longueur sur l'axe
+  /// dominant), le segment est collé parfaitement sur cet axe. Sinon, l'angle
+  /// est laissé libre. `canvas` sert à mesurer la pente visuelle réelle : les
+  /// coordonnées sont normalisées 0..1 mais le canvas n'est pas carré, donc
+  /// dx/dy doivent être repondérés par sa taille.
+  Offset _snapOrthoSoft(Offset last, Offset cur, Size canvas,
+      {double tolerancePercent = _orthoSnapTolerancePercent}) {
+    final adx = ((cur.dx - last.dx) * canvas.width).abs();
+    final ady = ((cur.dy - last.dy) * canvas.height).abs();
+    if (adx < 1e-6 && ady < 1e-6) return cur;
+    final ratio = tolerancePercent / 100.0; // pente max tolérée pour aimanter
+    if (adx >= ady) {
+      // Plutôt horizontal : aimante si la pente (ady/adx) reste sous le seuil.
+      if (ady <= adx * ratio) return Offset(cur.dx, last.dy);
+    } else {
+      // Plutôt vertical : aimante si la pente (adx/ady) reste sous le seuil.
+      if (adx <= ady * ratio) return Offset(last.dx, cur.dy);
+    }
+    return cur;
+  }
+
+  /// Calcule le 2ᵉ point effectif d'un mur en cours de tracé. L'accrochage
+  /// aux géométries existantes (coins de pièce, extrémités de mur) est
+  /// prioritaire ; à défaut, on applique le magnétisme orthogonal relatif à
+  /// `p1` quand il est activé.
+  Offset _resolveWallEndpoint(Offset anchor, Offset raw, Size canvas,
+      {String? excludeWallId}) {
+    final geom = _snapToExistingGeometry(raw, excludeWallId: excludeWallId);
+    if (geom != raw) return geom; // coin / côté d'une autre pièce : prioritaire
+    if (_drawWallOrtho) return _snapOrthoSoft(anchor, geom, canvas);
+    return geom;
   }
 
   /// Termine le tracé : prompt pour nommer la pièce puis crée le RoomShape
@@ -5278,14 +5467,53 @@ class _DrawerViewState extends State<_DrawerView> {
       (pos.dx / canvas.width).clamp(0.0, 1.0),
       (pos.dy / canvas.height).clamp(0.0, 1.0),
     );
-    // Snap aux sommets/murs existants pour pointer précisément.
-    final snapped = _snapToExistingGeometry(norm);
+    // Snap aux sommets/murs existants — mais SEULEMENT si très proche
+    // (rayon réduit à 0,5 % pour éviter que 2 taps tombent sur le même
+    // sommet sur petit écran tactile). Si le snap collerait le 2ᵉ point au
+    // 1ᵉʳ, on ignore le snap.
+    Offset snapped = _snapToExistingGeometryNarrow(norm);
     if (_calibratePoint1 == null) {
       setState(() => _calibratePoint1 = snapped);
     } else {
+      // Si le snap ramènerait le 2ᵉ point sur le 1ᵉʳ, on garde le tap brut.
+      if ((snapped - _calibratePoint1!).distance < 0.005) {
+        snapped = norm;
+      }
       setState(() => _calibratePoint2 = snapped);
-      _askCalibrationDistance();
+      // Laisse un frame pour que le marker soit dessiné avant d'ouvrir
+      // le dialogue (utile pour la confiance utilisateur).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _askCalibrationDistance();
+      });
     }
+  }
+
+  /// Variante de [_snapToExistingGeometry] avec un rayon de snap beaucoup
+  /// plus petit, adaptée à la calibration (l'utilisateur veut deux points
+  /// distincts, pas une accroche agressive).
+  Offset _snapToExistingGeometryNarrow(Offset p) {
+    const tight = 0.005;
+    Offset best = p;
+    double bestDist = tight;
+    for (final r in widget.plan.rooms) {
+      for (final c in _roomCorners(r)) {
+        final d = (p - c).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = c;
+        }
+      }
+    }
+    for (final w in widget.plan.freeWalls) {
+      for (final c in [Offset(w.x1, w.y1), Offset(w.x2, w.y2)]) {
+        final d = (p - c).distance;
+        if (d < bestDist) {
+          bestDist = d;
+          best = c;
+        }
+      }
+    }
+    return best;
   }
 
   Future<void> _askCalibrationDistance() async {
@@ -5293,8 +5521,24 @@ class _DrawerViewState extends State<_DrawerView> {
     final p2 = _calibratePoint2!;
     final unitsDist = (p2 - p1).distance;
     if (unitsDist < 1e-4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Les 2 points sont trop proches.')),
+      // Dialog plus visible qu'un SnackBar : sur petit écran tactile la
+      // SnackBar peut être cachée par le pouce de l'utilisateur.
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Points trop proches'),
+          content: const Text(
+            'Les 2 points cliqués sont identiques (snap vers le même sommet). '
+            'Recommence en cliquant à 2 endroits VRAIMENT distincts du plan — '
+            'idéalement les deux extrémités d\'un mur ou d\'une cote connue.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Recommencer'),
+            ),
+          ],
+        ),
       );
       setState(() {
         _calibratePoint1 = null;
@@ -5302,48 +5546,98 @@ class _DrawerViewState extends State<_DrawerView> {
       });
       return;
     }
+    // Délai pour que le tap qui a placé le 2ᵉ point ne touche pas un
+    // élément du formulaire qui apparaît juste après.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
     final controller = TextEditingController();
-    final result = await showDialog<String>(
+    final focusNode = FocusNode();
+    // Bottom sheet plutôt qu'AlertDialog : le clavier Android s'ouvre
+    // beaucoup plus fiablement, et la touche retour Android est bloquée
+    // par PopScope. Le bouton "Calibrer" reste désactivé tant que le
+    // champ est vide.
+    final result = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Distance réelle ?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Saisis la distance réelle entre les 2 points cliqués (en mètres). '
-              'Le plan entier sera mis à l\'échelle.',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Distance (m)',
-                hintText: 'ex. 5,20',
-                suffixText: 'm',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (v) => Navigator.of(ctx).pop(v),
-            ),
-          ],
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      useRootNavigator: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setStateSheet) {
+              final text = controller.text.trim();
+              final parsed = text.isEmpty
+                  ? null
+                  : double.tryParse(text.replaceAll(',', '.'));
+              final canSubmit = parsed != null && parsed > 0;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Distance réelle ?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Saisis la distance réelle entre les 2 points cliqués '
+                    '(en mètres). Le plan entier sera mis à l\'échelle.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: true,
+                    keyboardType: TextInputType.text,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'Distance (m)',
+                      hintText: 'ex. 5,20',
+                      suffixText: 'm',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setStateSheet(() {}),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Annuler'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: canSubmit
+                            ? () => Navigator.of(ctx).pop(controller.text)
+                            : null,
+                        child: const Text('Calibrer'),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Calibrer'),
-          ),
-        ],
       ),
     );
+    focusNode.dispose();
     if (result == null) {
       setState(() {
         _calibrateMode = false;
@@ -8109,32 +8403,12 @@ class _FreeWallsPainter extends CustomPainter {
 
     for (final w in plan.freeWalls) {
       final isSelected = w.id == selectedId;
-      final isVirtual = w.isVirtual;
       final a = toPx(w.x1, w.y1);
       final b = toPx(w.x2, w.y2);
       final joinedA = isJoined(w.x1, w.y1);
       final joinedB = isJoined(w.x2, w.y2);
 
-      // Épaisseur alignée sur celle des murs des pièces (Border 1.5 / 2.5).
-      if (isVirtual) {
-        final paint = Paint()
-          ..color = isSelected
-              ? const Color(0xFF0EA5E9)
-              : const Color(0xFF64748B)
-          ..strokeWidth = isSelected ? 2.5 : 1.5
-          ..strokeCap = StrokeCap.butt
-          ..style = PaintingStyle.stroke;
-        _drawDashedSegment(canvas, a, b, paint, dash: 8, gap: 5);
-      } else {
-        final paint = Paint()
-          ..color = isSelected
-              ? const Color(0xFF7C3AED)
-              : Colors.black54
-          ..strokeWidth = isSelected ? 2.5 : 1.5
-          ..strokeCap = StrokeCap.butt
-          ..style = PaintingStyle.stroke;
-        canvas.drawLine(a, b, paint);
-      }
+      _paintFreeWallByStyle(canvas, a, b, w.style, isSelected: isSelected);
 
       // Halo vert sur chaque extrémité qui touche un mur de pièce.
       // Indique visuellement que la jonction est faite.
@@ -8435,12 +8709,14 @@ class _DrawWallPreviewPainter extends CustomPainter {
   final Offset? p1;
   final Offset? hover;
   final bool isVirtual;
+  final bool orthoActive;
   final List<List<Offset>> existingEdges;
 
   _DrawWallPreviewPainter({
     required this.p1,
     this.hover,
     this.isVirtual = false,
+    this.orthoActive = false,
     this.existingEdges = const [],
   });
 
@@ -8460,11 +8736,36 @@ class _DrawWallPreviewPainter extends CustomPainter {
         existingEdges: existingEdges,
       );
       final b = toPx(hover!);
+      // Détecte si l'aperçu est aimanté sur un axe (horizontal ou vertical).
+      final lockedH = orthoActive &&
+          (hover!.dy - p1!.dy).abs() < 1e-6 &&
+          (hover!.dx - p1!.dx).abs() > 1e-6;
+      final lockedV = orthoActive &&
+          (hover!.dx - p1!.dx).abs() < 1e-6 &&
+          (hover!.dy - p1!.dy).abs() > 1e-6;
+      final locked = lockedH || lockedV;
+
+      // Mur aimanté : ligne-guide discrète sur tout le canvas le long de
+      // l'axe, pour matérialiser l'alignement parfait.
+      if (locked) {
+        final guide = Paint()
+          ..color = const Color(0xFF16A34A).withValues(alpha: 0.35)
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke;
+        if (lockedH) {
+          canvas.drawLine(Offset(0, a.dy), Offset(size.width, a.dy), guide);
+        } else {
+          canvas.drawLine(Offset(a.dx, 0), Offset(a.dx, size.height), guide);
+        }
+      }
+
       final paint = Paint()
         ..color = isVirtual
             ? const Color(0xFF64748B)
-            : const Color(0xFF7C3AED).withValues(alpha: 0.7)
-        ..strokeWidth = 2.0
+            : locked
+                ? const Color(0xFF16A34A)
+                : const Color(0xFF7C3AED).withValues(alpha: 0.7)
+        ..strokeWidth = locked ? 2.5 : 2.0
         ..style = PaintingStyle.stroke;
       if (isVirtual) {
         const dash = 8.0;
@@ -8506,6 +8807,7 @@ class _DrawWallPreviewPainter extends CustomPainter {
       old.p1 != p1 ||
       old.hover != hover ||
       old.isVirtual != isVirtual ||
+      old.orthoActive != orthoActive ||
       old.existingEdges != existingEdges;
 }
 
@@ -8515,13 +8817,17 @@ class _DrawWallPreviewPainter extends CustomPainter {
 class _DrawWallBanner extends StatelessWidget {
   final bool point1Placed;
   final bool isVirtual;
+  final bool orthoOn;
   final VoidCallback onToggleVirtual;
+  final VoidCallback onToggleOrtho;
   final VoidCallback onCancel;
 
   const _DrawWallBanner({
     required this.point1Placed,
     required this.isVirtual,
+    required this.orthoOn,
     required this.onToggleVirtual,
+    required this.onToggleOrtho,
     required this.onCancel,
   });
 
@@ -8552,7 +8858,14 @@ class _DrawWallBanner extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            _BannerIconButton(
+              icon: Icons.square_foot,
+              tooltip: orthoOn ? 'Tracer en diagonale' : 'Aimanter H/V',
+              active: orthoOn,
+              onTap: onToggleOrtho,
+            ),
+            const SizedBox(width: 6),
             InkWell(
               onTap: onToggleVirtual,
               borderRadius: BorderRadius.circular(8),
@@ -8694,4 +9007,279 @@ class _CalibratePreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CalibratePreviewPainter old) =>
       old.p1 != p1 || old.p2 != p2;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Rendu des FreeWalls selon leur style (mur, clôture, portail, haie…)
+// ─────────────────────────────────────────────────────────────────────────
+
+void _paintFreeWallByStyle(
+  Canvas canvas,
+  Offset a,
+  Offset b,
+  FreeWallStyle style, {
+  required bool isSelected,
+}) {
+  final selColor = isSelected ? const Color(0xFF7C3AED) : null;
+  final width = isSelected ? 2.5 : 1.5;
+
+  Paint stroke(Color c, {double? w}) => Paint()
+    ..color = selColor ?? c
+    ..strokeWidth = w ?? width
+    ..strokeCap = StrokeCap.butt
+    ..style = PaintingStyle.stroke;
+
+  switch (style) {
+    case FreeWallStyle.wall:
+      canvas.drawLine(a, b, stroke(Colors.black54));
+      break;
+    case FreeWallStyle.virtualWall:
+      _drawDashedTop(canvas, a, b, stroke(const Color(0xFF64748B)),
+          dash: 8, gap: 5);
+      break;
+    case FreeWallStyle.fenceGrid:
+      // Trait pointillé fin gris + petites croix régulières
+      _drawDashedTop(canvas, a, b, stroke(const Color(0xFF475569)),
+          dash: 4, gap: 3);
+      _drawAlongSegment(a, b, 0.02, (p, dir) {
+        final n = Offset(-dir.dy, dir.dx) * 3;
+        canvas.drawLine(p - n, p + n, stroke(const Color(0xFF475569), w: 0.8));
+      });
+      break;
+    case FreeWallStyle.fenceWood:
+      // Trait épais marron + petits traits verticaux (planches)
+      canvas.drawLine(a, b, stroke(const Color(0xFF92400E), w: width + 1));
+      _drawAlongSegment(a, b, 0.015, (p, dir) {
+        final n = Offset(-dir.dy, dir.dx) * 4;
+        canvas.drawLine(p - n, p + n,
+            stroke(const Color(0xFF78350F), w: 0.8));
+      });
+      break;
+    case FreeWallStyle.fencePvc:
+      canvas.drawLine(a, b, stroke(const Color(0xFFE2E8F0), w: width + 1));
+      canvas.drawLine(a, b, stroke(const Color(0xFF94A3B8), w: 0.8));
+      break;
+    case FreeWallStyle.wallStone:
+      // Trait très épais gris foncé
+      canvas.drawLine(a, b, stroke(const Color(0xFF374151), w: width + 1.5));
+      break;
+    case FreeWallStyle.wallLow:
+      // Double trait fin
+      final n = (b - a);
+      final len = n.distance;
+      if (len > 0) {
+        final perp = Offset(-n.dy, n.dx) / len * 1.5;
+        canvas.drawLine(a + perp, b + perp, stroke(Colors.black54));
+        canvas.drawLine(a - perp, b - perp, stroke(Colors.black54));
+      } else {
+        canvas.drawLine(a, b, stroke(Colors.black54));
+      }
+      break;
+    case FreeWallStyle.hedge:
+      // Trait vert ondulé
+      _drawWavySegment(canvas, a, b,
+          stroke(const Color(0xFF15803D), w: width + 1), amplitude: 3.5);
+      break;
+    case FreeWallStyle.gate:
+      // Trait rouge + petit arc d'ouverture
+      canvas.drawLine(a, b, stroke(const Color(0xFFDC2626), w: width + 0.5));
+      final mid = (a + b) / 2;
+      final radius = (b - a).distance * 0.18;
+      if (radius > 2) {
+        canvas.drawArc(
+          Rect.fromCircle(center: mid, radius: radius),
+          -math.pi / 4,
+          math.pi / 2,
+          false,
+          stroke(const Color(0xFFDC2626), w: 0.8),
+        );
+      }
+      break;
+    case FreeWallStyle.gateSliding:
+      // Trait rouge + flèche horizontale
+      canvas.drawLine(a, b, stroke(const Color(0xFFDC2626), w: width + 0.5));
+      final dir = (b - a);
+      final len = dir.distance;
+      if (len > 4) {
+        final mid = (a + b) / 2;
+        final u = dir / len;
+        final n = Offset(-u.dy, u.dx);
+        final p1 = mid + u * 4 + n * 3;
+        final p2 = mid + u * 4 - n * 3;
+        final tip = mid + u * 7;
+        canvas.drawLine(mid - u * 4, tip, stroke(const Color(0xFFDC2626), w: 1));
+        canvas.drawLine(p1, tip, stroke(const Color(0xFFDC2626), w: 1));
+        canvas.drawLine(p2, tip, stroke(const Color(0xFFDC2626), w: 1));
+      }
+      break;
+    case FreeWallStyle.gatePedestrian:
+      // Trait orange (plus fin = passage piéton)
+      canvas.drawLine(a, b, stroke(const Color(0xFFEA580C), w: width));
+      break;
+    case FreeWallStyle.railing:
+      // Trait fin + petits traits verticaux serrés (barreaux)
+      canvas.drawLine(a, b, stroke(const Color(0xFF1F2937)));
+      _drawAlongSegment(a, b, 0.01, (p, dir) {
+        final n = Offset(-dir.dy, dir.dx) * 3;
+        canvas.drawLine(p - n, p + n, stroke(const Color(0xFF1F2937), w: 0.6));
+      });
+      break;
+  }
+}
+
+/// Variante top-level de `_drawDashedSegment` (méthode du painter) pour
+/// que `_paintFreeWallByStyle` puisse l'utiliser.
+void _drawDashedTop(
+  Canvas canvas,
+  Offset a,
+  Offset b,
+  Paint paint, {
+  required double dash,
+  required double gap,
+}) {
+  final total = (b - a).distance;
+  if (total < 1) {
+    canvas.drawLine(a, b, paint);
+    return;
+  }
+  final dx = (b.dx - a.dx) / total;
+  final dy = (b.dy - a.dy) / total;
+  double pos = 0;
+  while (pos < total) {
+    final start = Offset(a.dx + dx * pos, a.dy + dy * pos);
+    final end = Offset(
+      a.dx + dx * math.min(pos + dash, total),
+      a.dy + dy * math.min(pos + dash, total),
+    );
+    canvas.drawLine(start, end, paint);
+    pos += dash + gap;
+  }
+}
+
+/// Pour chaque échantillon le long du segment AB, appelle [fn(point, direction)].
+/// Direction est un vecteur unitaire.
+void _drawAlongSegment(
+  Offset a,
+  Offset b,
+  double stepRatio,
+  void Function(Offset p, Offset dir) fn,
+) {
+  final dx = b.dx - a.dx;
+  final dy = b.dy - a.dy;
+  final len = math.sqrt(dx * dx + dy * dy);
+  if (len < 4) return;
+  final dir = Offset(dx / len, dy / len);
+  final step = math.max(len * stepRatio, 4.0);
+  for (var t = step / 2; t < len; t += step) {
+    fn(a + dir * t, dir);
+  }
+}
+
+void _drawWavySegment(
+  Canvas canvas,
+  Offset a,
+  Offset b,
+  Paint paint, {
+  double amplitude = 3,
+}) {
+  final dx = b.dx - a.dx;
+  final dy = b.dy - a.dy;
+  final len = math.sqrt(dx * dx + dy * dy);
+  if (len < 4) {
+    canvas.drawLine(a, b, paint);
+    return;
+  }
+  final ux = dx / len;
+  final uy = dy / len;
+  final nx = -uy;
+  final ny = ux;
+  final waveLen = math.max(len / 12, 8);
+  final path = Path()..moveTo(a.dx, a.dy);
+  for (var t = 0.0; t <= len; t += 1) {
+    final phase = (t / waveLen) * 2 * math.pi;
+    final off = math.sin(phase) * amplitude;
+    final x = a.dx + ux * t + nx * off;
+    final y = a.dy + uy * t + ny * off;
+    path.lineTo(x, y);
+  }
+  canvas.drawPath(path, paint);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Bottom sheet de sélection du style de tracé pour les plans terrain
+// ─────────────────────────────────────────────────────────────────────────
+
+enum _StyleKind { fenceOrWall, gate }
+
+const Map<FreeWallStyle, IconData> _freeWallStyleIcons = {
+  FreeWallStyle.wall: Icons.crop_square_outlined,
+  FreeWallStyle.virtualWall: Icons.horizontal_rule,
+  FreeWallStyle.fenceGrid: Icons.fence_outlined,
+  FreeWallStyle.fenceWood: Icons.fence,
+  FreeWallStyle.fencePvc: Icons.fence_outlined,
+  FreeWallStyle.wallStone: Icons.wallpaper_outlined,
+  FreeWallStyle.wallLow: Icons.horizontal_rule_rounded,
+  FreeWallStyle.hedge: Icons.grass_outlined,
+  FreeWallStyle.gate: Icons.door_sliding_outlined,
+  FreeWallStyle.gateSliding: Icons.swap_horiz,
+  FreeWallStyle.gatePedestrian: Icons.meeting_room_outlined,
+  FreeWallStyle.railing: Icons.view_week_outlined,
+};
+
+const List<FreeWallStyle> _fenceStyles = [
+  FreeWallStyle.fenceGrid,
+  FreeWallStyle.fenceWood,
+  FreeWallStyle.fencePvc,
+  FreeWallStyle.wallStone,
+  FreeWallStyle.wallLow,
+  FreeWallStyle.hedge,
+  FreeWallStyle.railing,
+  FreeWallStyle.wall,
+];
+
+const List<FreeWallStyle> _gateStyles = [
+  FreeWallStyle.gate,
+  FreeWallStyle.gateSliding,
+  FreeWallStyle.gatePedestrian,
+];
+
+Future<FreeWallStyle?> _pickFreeWallStyle(
+  BuildContext context, {
+  required _StyleKind kind,
+}) {
+  final styles = kind == _StyleKind.gate ? _gateStyles : _fenceStyles;
+  final title =
+      kind == _StyleKind.gate ? 'Type de portail' : 'Type de clôture / mur';
+  return showModalBottomSheet<FreeWallStyle>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...styles.map((s) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(_freeWallStyleIcons[s] ?? Icons.line_axis,
+                        color: const Color(0xFF7C3AED)),
+                    title: Text(s.label),
+                    onTap: () => Navigator.of(ctx).pop(s),
+                  )),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
