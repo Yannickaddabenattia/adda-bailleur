@@ -45,9 +45,27 @@ enum BailType {
     }
   }
 
-  /// Plafond du dépôt de garantie en nombre de mois de loyer HC.
-  /// 2 mois pour bail vide, 1 mois sinon (loi du 6 juillet 1989, art. 22).
-  int get plafondDepotMois => this == BailType.vide ? 2 : 1;
+  /// Plafond légal du dépôt de garantie, en nombre de mois de loyer HC.
+  /// - Vide : 1 mois (loi n°89-462 du 6 juillet 1989, art. 22).
+  /// - Meublé : 2 mois (art. 25-6).
+  /// - Mobilité : dépôt de garantie interdit, 0 mois (loi ELAN, art. 25-12).
+  /// - Colocation à bail unique : jusqu'à 2 mois si meublée (1 si nue) — on
+  ///   retient le plafond le plus large faute de distinguer nu/meublé ici.
+  /// - Saisonnier : hors loi de 1989 (dépôt libre), plafond indicatif.
+  int get plafondDepotMois {
+    switch (this) {
+      case BailType.vide:
+        return 1;
+      case BailType.meuble:
+        return 2;
+      case BailType.colocation:
+        return 2;
+      case BailType.mobilite:
+        return 0;
+      case BailType.saisonnier:
+        return 2;
+    }
+  }
 
   /// Préavis légal du bailleur (en mois).
   int get preavisBailleurMois {

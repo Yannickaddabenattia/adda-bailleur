@@ -193,11 +193,15 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
       for (final c in t.clausesPersoIncluses) {
         _customClauses.add(c.copy());
       }
-      // Équipements meublé du template
+      // Équipements meublé du template.
+      // Note : les obligatoires sont déjà cochés par défaut à l'init (cf.
+      // _equipements ci-dessus) ; ce mapping ne sert qu'à reporter des valeurs
+      // explicites du template. Les libellés DOIVENT correspondre exactement
+      // aux clés de _equipements, sinon le report est silencieusement ignoré.
       if (t.equipementsMeubleDefauts != null) {
         // Mapping clés sémantiques → libellés français du form
         const keyToLabel = {
-          'literie': 'Literie (lit, matelas, couette/oreiller)',
+          'literie': 'Literie (lit + matelas)',
           'volets_rideaux': 'Volets ou rideaux occultants (chambre)',
           'plaques_cuisson': 'Plaques de cuisson',
           'four_micro_ondes': 'Four ou micro-ondes',
