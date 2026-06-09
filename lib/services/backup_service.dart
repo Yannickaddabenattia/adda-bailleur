@@ -15,12 +15,15 @@ import '../models/element_piece.dart';
 import '../models/etat_des_lieux.dart';
 import '../models/etat_element.dart';
 import '../models/fiscal_settings.dart';
+import '../models/garant.dart';
 import '../models/locataire.dart';
 import '../models/logement.dart';
 import '../models/piece.dart';
 import '../models/plan_logement.dart';
 import '../models/quittance.dart';
 import '../models/avenant.dart';
+import '../models/bail_template.dart';
+import '../models/clause.dart';
 import '../models/contrat_bail.dart';
 import '../models/diagnostic.dart';
 import '../models/revision_loyer.dart';
@@ -252,6 +255,19 @@ class BackupService {
       updatedAtOf: (a) => a.updatedAt,
     );
 
+    // Templates de bails personnels : fusion par `dateModification`.
+    // On filtre `isSystem == false` côté lecture pour ne pas écraser un
+    // template système (insertion volontaire d'un payload corrompu).
+    await _mergeByUpdatedAt<BailTemplate>(
+      box: LocalDatabase.bailTemplatesBox,
+      incoming: (payload['bailTemplates'] as List? ?? const [])
+          .map((m) => BailTemplate.fromMap((m as Map).cast<String, dynamic>()))
+          .where((t) => !t.isSystem)
+          .toList(),
+      idOf: (t) => t.id,
+      updatedAtOf: (t) => t.dateModification ?? DateTime(1970),
+    );
+
     // Aucune suppression automatique : on respecte le choix de l'utilisateur
     // de ne supprimer ses logements / fichiers que manuellement. La fusion
     // garde donc les doublons éventuels (deux logements avec le même nom)
@@ -386,6 +402,17 @@ class BackupService {
     if (payload.containsKey('avenants')) {
       await LocalDatabase.avenantsBox.clear();
     }
+    if (payload.containsKey('bailTemplates')) {
+      // On vide uniquement les templates utilisateur. Les templates système
+      // viennent du code, ils ne sont pas en base.
+      final userKeys = LocalDatabase.bailTemplatesBox.values
+          .where((t) => !t.isSystem)
+          .map((t) => t.id)
+          .toList();
+      for (final k in userKeys) {
+        await LocalDatabase.bailTemplatesBox.delete(k);
+      }
+    }
     if (payload.containsKey('fiscalSettings')) {
       await LocalDatabase.fiscalSettingsBox.clear();
       final fiscalMap = payload['fiscalSettings'];
@@ -435,6 +462,13 @@ class BackupService {
     }
     for (final a in incomingAvenants) {
       await LocalDatabase.avenantsBox.put(a.id, a);
+    }
+    final incomingBailTemplates = (payload['bailTemplates'] as List? ?? const [])
+        .map((m) => BailTemplate.fromMap((m as Map).cast<String, dynamic>()))
+        .where((t) => !t.isSystem)
+        .toList();
+    for (final t in incomingBailTemplates) {
+      await LocalDatabase.bailTemplatesBox.put(t.id, t);
     }
 
     return BackupImportReport(
@@ -594,12 +628,19 @@ class BackupService {
     return MergeStats(added: added, updated: updated, kept: kept);
   }
 
+  /// Construit le payload de sauvegarde sans le chiffrer (utile pour
+  /// détecter un changement d'état via SHA-256 dans [AutoBackupService]).
+  Map<String, dynamic> debugBuildPayload() => _buildPayload();
+
   Map<String, dynamic> _buildPayload() {
     final user = LocalDatabase.userBox.get(AppConstants.userProfileKey);
+    final deviceId =
+        LocalDatabase.settingsBox.get('auto_backup_device_id') ?? '';
     return {
       'version': formatVersion,
       'appVersion': AppConstants.appVersion,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'deviceId': deviceId,
       'user': user == null ? null : _userToMap(user),
       'logements': LocalDatabase.logementsBox.values.map(_logementToMap).toList(),
       'locataires':
@@ -631,6 +672,12 @@ class BackupService {
           LocalDatabase.avenantsBox.values.map(_avenantToMap).toList(),
       'diagnostics':
           LocalDatabase.diagnosticsBox.values.map(_diagnosticToMap).toList(),
+      // Templates de bails personnels uniquement (les templates système sont
+      // hardcodés dans le code et ne sont pas exportés).
+      'bailTemplates': LocalDatabase.bailTemplatesBox.values
+          .where((t) => !t.isSystem)
+          .map((t) => t.toMap())
+          .toList(),
     };
   }
 
@@ -744,6 +791,27 @@ class BackupService {
         'diagnosticIds': c.diagnosticIds,
         if (c.edlEntreeId != null) 'edlEntreeId': c.edlEntreeId,
         'notes': c.notes,
+        'attestationAssurance': c.attestationAssurance,
+        if (c.assuranceFilePath != null)
+          'assuranceFilePath': c.assuranceFilePath,
+        if (c.modalitesRestitutionDepot != null)
+          'modalitesRestitutionDepot': c.modalitesRestitutionDepot,
+        if (c.descriptionLogement != null)
+          'descriptionLogement': c.descriptionLogement,
+        'mentionEtatDesLieux': c.mentionEtatDesLieux,
+        if (c.bailleurAdresse != null) 'bailleurAdresse': c.bailleurAdresse,
+        if (c.bailleurTelephone != null)
+          'bailleurTelephone': c.bailleurTelephone,
+        'bailleurEstSociete': c.bailleurEstSociete,
+        if (c.bailleurRaisonSociale != null)
+          'bailleurRaisonSociale': c.bailleurRaisonSociale,
+        if (c.bailleurSiret != null) 'bailleurSiret': c.bailleurSiret,
+        if (c.bailleurRepresentant != null)
+          'bailleurRepresentant': c.bailleurRepresentant,
+        'garants': c.garants.map((g) => g.toMap()).toList(),
+        'clauses': c.clauses.map((cl) => cl.toMap()).toList(),
+        'annexesOptionnelles': c.annexesOptionnelles,
+        'paiementTermeEchu': c.paiementTermeEchu,
         'createdAt': c.createdAt.toUtc().toIso8601String(),
         'updatedAt': c.updatedAt.toUtc().toIso8601String(),
       };
@@ -820,6 +888,28 @@ class BackupService {
           (m['diagnosticIds'] as List?)?.cast<String>() ?? <String>[],
       edlEntreeId: m['edlEntreeId'] as String?,
       notes: (m['notes'] as String?) ?? '',
+      attestationAssurance: (m['attestationAssurance'] as bool?) ?? false,
+      assuranceFilePath: m['assuranceFilePath'] as String?,
+      modalitesRestitutionDepot: m['modalitesRestitutionDepot'] as String?,
+      descriptionLogement: m['descriptionLogement'] as String?,
+      mentionEtatDesLieux: (m['mentionEtatDesLieux'] as bool?) ?? false,
+      bailleurAdresse: m['bailleurAdresse'] as String?,
+      bailleurTelephone: m['bailleurTelephone'] as String?,
+      bailleurEstSociete: (m['bailleurEstSociete'] as bool?) ?? false,
+      bailleurRaisonSociale: m['bailleurRaisonSociale'] as String?,
+      bailleurSiret: m['bailleurSiret'] as String?,
+      bailleurRepresentant: m['bailleurRepresentant'] as String?,
+      garants: (m['garants'] as List?)
+              ?.map((e) => Garant.fromMap((e as Map).cast<String, dynamic>()))
+              .toList() ??
+          <Garant>[],
+      clauses: (m['clauses'] as List?)
+              ?.map((e) => Clause.fromMap((e as Map).cast<String, dynamic>()))
+              .toList() ??
+          <Clause>[],
+      annexesOptionnelles:
+          (m['annexesOptionnelles'] as List?)?.cast<String>() ?? <String>[],
+      paiementTermeEchu: (m['paiementTermeEchu'] as bool?) ?? false,
       createdAt: DateTime.parse(m['createdAt'] as String),
       updatedAt: DateTime.parse(m['updatedAt'] as String),
     );
@@ -1040,6 +1130,20 @@ class BackupService {
             l.dateDebutDispositif?.toUtc().toIso8601String(),
         'dateFinDispositif':
             l.dateFinDispositif?.toUtc().toIso8601String(),
+        // Diagnostics conditionnels
+        if (l.anneeConstruction != null)
+          'anneeConstruction': l.anneeConstruction,
+        'datePermisConstruire':
+            l.datePermisConstruire?.toUtc().toIso8601String(),
+        'dateInstallationElectrique':
+            l.dateInstallationElectrique?.toUtc().toIso8601String(),
+        'dateInstallationGaz':
+            l.dateInstallationGaz?.toUtc().toIso8601String(),
+        'typeAssainissement': l.typeAssainissement.name,
+        'zoneTermites': l.zoneTermites,
+        // Régime LMNP / LMP
+        'regimeLmnp': l.regimeLmnp.name,
+        'enRenovationEnergetique': l.enRenovationEnergetique,
         // Documents
         'contratBailPaths': l.contratBailPaths,
       };
@@ -1087,6 +1191,28 @@ class BackupService {
           dateFinDispositif: m['dateFinDispositif'] is String
               ? DateTime.parse(m['dateFinDispositif'] as String)
               : null,
+          anneeConstruction: (m['anneeConstruction'] as num?)?.toInt(),
+          datePermisConstruire: m['datePermisConstruire'] is String
+              ? DateTime.parse(m['datePermisConstruire'] as String)
+              : null,
+          dateInstallationElectrique:
+              m['dateInstallationElectrique'] is String
+                  ? DateTime.parse(m['dateInstallationElectrique'] as String)
+                  : null,
+          dateInstallationGaz: m['dateInstallationGaz'] is String
+              ? DateTime.parse(m['dateInstallationGaz'] as String)
+              : null,
+          typeAssainissement: TypeAssainissement.values.firstWhere(
+            (t) => t.name == (m['typeAssainissement'] as String?),
+            orElse: () => TypeAssainissement.inconnu,
+          ),
+          zoneTermites: (m['zoneTermites'] as bool?) ?? false,
+          regimeLmnp: RegimeLmnp.values.firstWhere(
+            (r) => r.name == (m['regimeLmnp'] as String?),
+            orElse: () => RegimeLmnp.microBIC,
+          ),
+          enRenovationEnergetique:
+              (m['enRenovationEnergetique'] as bool?) ?? false,
         );
       }
 
@@ -1106,6 +1232,8 @@ class BackupService {
         'nouvelleAdresse': l.nouvelleAdresse,
         'nouveauTelephone': l.nouveauTelephone,
         'nouvelEmail': l.nouvelEmail,
+        'dateNaissance': l.dateNaissance?.toUtc().toIso8601String(),
+        'adresse': l.adresse,
         'notes': l.notes,
         'createdAt': l.createdAt.toUtc().toIso8601String(),
         'updatedAt': l.updatedAt.toUtc().toIso8601String(),
@@ -1132,6 +1260,10 @@ class BackupService {
         nouvelleAdresse: m['nouvelleAdresse'] as String?,
         nouveauTelephone: m['nouveauTelephone'] as String?,
         nouvelEmail: m['nouvelEmail'] as String?,
+        dateNaissance: m['dateNaissance'] == null
+            ? null
+            : DateTime.parse(m['dateNaissance'] as String),
+        adresse: m['adresse'] as String?,
         notes: m['notes'] as String,
         createdAt: DateTime.parse(m['createdAt'] as String),
         updatedAt: DateTime.parse(m['updatedAt'] as String),
@@ -1245,6 +1377,9 @@ class BackupService {
         'integrityHash': q.integrityHash,
         if (q.bailleurName != null) 'bailleurName': q.bailleurName,
         if (q.bailleurEmail != null) 'bailleurEmail': q.bailleurEmail,
+        if (q.montantPaye != null) 'montantPaye': q.montantPaye,
+        if (q.versementsSupplementaires.isNotEmpty)
+          'versementsSupplementaires': q.versementsSupplementaires,
       };
 
   Map<String, dynamic> _depenseToMap(Depense d) => {
@@ -1358,22 +1493,33 @@ class BackupService {
         );
       }
 
-  Quittance _quittanceFromMap(Map<String, dynamic> m) => Quittance(
-        id: m['id'] as String,
-        logementId: m['logementId'] as String,
-        locataireId: m['locataireId'] as String,
-        periodYear: m['periodYear'] as int,
-        periodMonth: m['periodMonth'] as int,
-        loyerHC: (m['loyerHC'] as num).toDouble(),
-        charges: (m['charges'] as num).toDouble(),
-        datePaiement: DateTime.parse(m['datePaiement'] as String),
-        dateEmission: DateTime.parse(m['dateEmission'] as String),
-        notes: m['notes'] as String,
-        createdAt: DateTime.parse(m['createdAt'] as String),
-        integrityHash: m['integrityHash'] as String?,
-        bailleurName: m['bailleurName'] as String?,
-        bailleurEmail: m['bailleurEmail'] as String?,
-      );
+  Quittance _quittanceFromMap(Map<String, dynamic> m) {
+    final rawVers = m['versementsSupplementaires'] as Map?;
+    final vers = <String, double>{};
+    if (rawVers != null) {
+      rawVers.forEach((k, v) {
+        if (k is String && v is num) vers[k] = v.toDouble();
+      });
+    }
+    return Quittance(
+      id: m['id'] as String,
+      logementId: m['logementId'] as String,
+      locataireId: m['locataireId'] as String,
+      periodYear: m['periodYear'] as int,
+      periodMonth: m['periodMonth'] as int,
+      loyerHC: (m['loyerHC'] as num).toDouble(),
+      charges: (m['charges'] as num).toDouble(),
+      datePaiement: DateTime.parse(m['datePaiement'] as String),
+      dateEmission: DateTime.parse(m['dateEmission'] as String),
+      notes: m['notes'] as String,
+      createdAt: DateTime.parse(m['createdAt'] as String),
+      integrityHash: m['integrityHash'] as String?,
+      bailleurName: m['bailleurName'] as String?,
+      bailleurEmail: m['bailleurEmail'] as String?,
+      montantPaye: (m['montantPaye'] as num?)?.toDouble(),
+      versementsSupplementaires: vers,
+    );
+  }
 }
 
 class MergeStats {

@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-
 import '../../core/backup/backup_codec.dart';
+import '../../core/email_sender.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/backup_service.dart';
 import '../../widgets/primary_button.dart';
+import 'auto_backup_settings_screen.dart';
 import 'received_backups_screen.dart';
 
 enum _ImportMode { merge, replace }
@@ -82,16 +82,14 @@ class _BackupScreenState extends State<BackupScreen> {
           }
         }
       } else {
-        final box = context.findRenderObject() as RenderBox?;
-        await Share.shareXFiles(
-          [XFile(file.path, mimeType: 'application/octet-stream')],
+        // Mobile : composeur d'e-mail direct avec la sauvegarde en pièce
+        // jointe (repli sur la feuille de partage si aucun client mail).
+        await EmailSender.sendWithAttachment(
+          path: file.path,
           subject: 'Sauvegarde ADDA Bailleur',
-          text:
-              'Sauvegarde chiffrée ADDA Bailleur. Conservez ce fichier et '
-              'votre passphrase en lieu sûr.',
-          sharePositionOrigin: box == null
-              ? null
-              : box.localToGlobal(Offset.zero) & box.size,
+          body: 'Sauvegarde chiffrée ADDA Bailleur en pièce jointe. '
+              'Conservez ce fichier et votre passphrase en lieu sûr.',
+          mimeType: 'application/octet-stream',
         );
       }
     } catch (e) {
@@ -344,6 +342,23 @@ end tell
             children: [
               _InfoBox(),
               const SizedBox(height: 20),
+              _ActionCard(
+                icon: Icons.cloud_sync_outlined,
+                title: 'Sauvegarde automatique',
+                description:
+                    'Pour ne plus jamais oublier d\'exporter, ADDA Bailleur '
+                    'peut sauvegarder tout seul vers un dossier de votre '
+                    'iCloud Drive, OneDrive, Google Drive ou pCloud.',
+                button: 'Configurer',
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AutoBackupSettingsScreen(),
+                          ),
+                        ),
+              ),
+              const SizedBox(height: 16),
               _ActionCard(
                 icon: Icons.backup_outlined,
                 title: 'Exporter mes données',

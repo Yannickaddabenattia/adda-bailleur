@@ -68,8 +68,35 @@ class ReceivedShareContent {
 /// le payload JSON a un `kind: 'tenant_share'` et est filtré sur un seul
 /// locataire. Protégé par un code de 8 caractères généré aléatoirement.
 class TenantShareService extends ChangeNotifier {
+  /// Version courante du format `.adls`. Incrémenter à chaque changement
+  /// incompatible du schéma JSON. Les fichiers avec une version supérieure
+  /// sont rejetés à la lecture pour éviter les corruptions silencieuses.
+  static const int formatVersion = 3;
+
   static const _codeAlphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   static const _codeLength = 8;
+
+  /// Lève [BackupFormatException] si le payload n'est pas un partage
+  /// locataire ou si sa version dépasse celle supportée par l'app.
+  static void _assertSchema(Map<String, dynamic> decoded) {
+    if (decoded['kind'] != 'tenant_share') {
+      throw const BackupFormatException(
+        'Ce fichier n\'est pas un partage locataire.',
+      );
+    }
+    final v = decoded['version'];
+    if (v is! int) {
+      throw const BackupFormatException(
+        'Version du partage manquante ou invalide.',
+      );
+    }
+    if (v > formatVersion) {
+      throw BackupFormatException(
+        'Partage version $v incompatible : mettez à jour l\'application '
+        '(version supportée : $formatVersion).',
+      );
+    }
+  }
 
   /// Liste des bundles reçus par le locataire, du plus récent au plus ancien.
   List<ReceivedBundle> get receivedBundles {
@@ -160,7 +187,7 @@ class TenantShareService extends ChangeNotifier {
 
     final payload = <String, dynamic>{
       'kind': 'tenant_share',
-      'version': 3,
+      'version': TenantShareService.formatVersion,
       'appVersion': AppConstants.appVersion,
       'sharedAt': DateTime.now().toUtc().toIso8601String(),
       'from': {
@@ -215,11 +242,7 @@ class TenantShareService extends ChangeNotifier {
     if (decoded is! Map<String, dynamic>) {
       throw const BackupFormatException('Payload JSON invalide');
     }
-    if (decoded['kind'] != 'tenant_share') {
-      throw const BackupFormatException(
-        'Ce fichier n\'est pas un partage locataire.',
-      );
-    }
+    _assertSchema(decoded);
     return _toContent(decoded);
   }
 
@@ -239,11 +262,7 @@ class TenantShareService extends ChangeNotifier {
       passphrase: code.trim().toUpperCase(),
     );
     final decoded = jsonDecode(jsonText) as Map<String, dynamic>;
-    if (decoded['kind'] != 'tenant_share') {
-      throw const BackupFormatException(
-        'Ce fichier n\'est pas un partage locataire.',
-      );
-    }
+    _assertSchema(decoded);
     final from = decoded['from'] as Map<String, dynamic>;
     final bundle = ReceivedBundle.create(
       fromName: '${from['firstName']} ${from['lastName']}',
@@ -277,6 +296,7 @@ class TenantShareService extends ChangeNotifier {
   /// Désérialise le contenu d'un [ReceivedBundle] stocké.
   ReceivedShareContent decodeBundle(ReceivedBundle bundle) {
     final decoded = jsonDecode(bundle.payloadJson) as Map<String, dynamic>;
+    _assertSchema(decoded);
     return _toContent(decoded);
   }
 
