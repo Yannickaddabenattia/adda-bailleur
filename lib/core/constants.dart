@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'ADDA Bailleur';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.1.0';
 
   // Noms des boîtes Hive chiffrées
   static const String userProfileBox = 'user_profile_box';
@@ -20,6 +20,7 @@ class AppConstants {
   static const String contratsBailBox = 'contrats_bail_box';
   static const String avenantsBox = 'avenants_box';
   static const String diagnosticsBox = 'diagnostics_box';
+  static const String bailTemplatesBox = 'bail_templates_box';
   static const String settingsBox = 'settings_box';
   static const String settingsThemeKey = 'theme_mode';
 

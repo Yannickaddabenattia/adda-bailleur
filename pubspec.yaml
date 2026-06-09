@@ -1,7 +1,7 @@
 name: adda_location
 description: "ADDA Bailleur - Gestion locale de locations immobilières."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+4
 
 environment:
   sdk: ^3.11.4
@@ -37,6 +37,9 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.4
   share_plus: ^10.1.2
+
+  # Envoi direct par e-mail avec pièce jointe (Android / iOS)
+  flutter_email_sender: ^6.0.3
 
   # Sauvegarde chiffrée (export/import)
   pointycastle: ^3.9.1

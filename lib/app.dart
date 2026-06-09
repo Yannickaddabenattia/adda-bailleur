@@ -6,6 +6,8 @@ import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/avenant_service.dart';
+import 'services/auto_backup_service.dart';
+import 'services/bail_template_service.dart';
 import 'services/contrat_bail_service.dart';
 import 'services/credit_service.dart';
 import 'services/depense_service.dart';
@@ -36,17 +38,44 @@ class AddaLocationApp extends StatefulWidget {
   State<AddaLocationApp> createState() => _AddaLocationAppState();
 }
 
-class _AddaLocationAppState extends State<AddaLocationApp> {
+class _AddaLocationAppState extends State<AddaLocationApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       IncomingFileHandler.instance.start(rootNavigatorKey);
+      // Filet de sécurité au démarrage : si une sauvegarde auto est
+      // configurée et qu'aucun backup n'a été fait depuis > 24h, on
+      // déclenche un check (sans bloquer le démarrage).
+      _maybeAutoBackup(AutoBackupTrigger.onResume);
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _maybeAutoBackup(AutoBackupTrigger.onResume);
+    }
+  }
+
+  void _maybeAutoBackup(AutoBackupTrigger trigger) {
+    final ctx = rootNavigatorKey.currentContext;
+    if (ctx == null) return;
+    final svc = Provider.of<AutoBackupService>(ctx, listen: false);
+    if (!svc.isEnabled) return;
+    final last = svc.lastBackupAt;
+    final tooOld = last == null ||
+        DateTime.now().difference(last).inHours >= 24;
+    if (!tooOld) return;
+    svc.runIfNeeded(trigger: trigger);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -67,6 +96,8 @@ class _AddaLocationAppState extends State<AddaLocationApp> {
         ChangeNotifierProvider(create: (_) => ExpenseCategoriesService()),
         ChangeNotifierProvider(create: (_) => RevisionLoyerService()),
         ChangeNotifierProvider(create: (_) => ContratBailService()),
+        ChangeNotifierProvider(create: (_) => BailTemplateService()),
+        ChangeNotifierProvider(create: (_) => AutoBackupService()),
         ChangeNotifierProvider(create: (_) => AvenantService()),
         ChangeNotifierProvider(create: (_) => DiagnosticService()),
         ChangeNotifierProvider(create: (_) => RappelService()),

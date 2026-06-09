@@ -4,6 +4,8 @@
 	<dict>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
@@ -24,6 +26,16 @@
 		<string>ADDA Bailleur accède à vos photos pour illustrer les états des lieux.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>ADDA Bailleur enregistre les photos des états des lieux dans votre bibliothèque.</string>
+		<key>NSCalendarsUsageDescription</key>
+		<string>ADDA Bailleur peut ajouter des rappels d'échéance de loyer ou de bail à votre calendrier.</string>
+		<key>NSContactsUsageDescription</key>
+		<string>ADDA Bailleur peut accéder à vos contacts pour pré-remplir les coordonnées d'un locataire ou d'un garant.</string>
+		<key>NSRemindersUsageDescription</key>
+		<string>ADDA Bailleur peut créer des rappels d'échéance de loyer, de bail ou de diagnostic.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>ADDA Bailleur utilise le microphone pour la dictée vocale lors de la rédaction d'un état des lieux.</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>ADDA Bailleur peut utiliser votre position pour pré-remplir l'adresse d'un logement.</string>
 		<key>NSDocumentsFolderUsageDescription</key>
 		<string>ADDA Bailleur lit et écrit vos fichiers de sauvegarde chiffrés dans l'app Fichiers.</string>
 		<key>NSLocalNetworkUsageDescription</key>
