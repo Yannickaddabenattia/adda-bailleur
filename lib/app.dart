@@ -66,6 +66,7 @@ class _AddaLocationAppState extends State<AddaLocationApp>
     if (ctx == null) return;
     final svc = Provider.of<AutoBackupService>(ctx, listen: false);
     if (!svc.isEnabled) return;
+    svc.checkForForeignBackups(); // détecte les données d'un autre appareil
     final last = svc.lastBackupAt;
     final tooOld = last == null ||
         DateTime.now().difference(last).inHours >= 24;

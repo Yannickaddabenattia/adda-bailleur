@@ -64,6 +64,88 @@ enum AutoBackupTrigger {
   fiscalite,
 }
 
+/// Métadonnées extraites du nom d'un fichier de sauvegarde `.adls`.
+///
+/// Deux formats acceptés (rétro-compatibilité) :
+///   `addalocation_YYYY-MM-DD_HHmm(ss).adls`            (ancien, sans device)
+///   `addalocation_<dev8>_YYYY-MM-DD_HHmmss.adls`       (avec identifiant device)
+class BackupFileName {
+  /// 8 caractères hexadécimaux identifiant l'appareil source, ou `null`
+  /// (ancien format : on considère alors le fichier comme « local »).
+  final String? deviceTag;
+
+  /// Date/heure encodée dans le nom (heure locale de l'appareil source).
+  final DateTime dateTime;
+
+  const BackupFileName(this.deviceTag, this.dateTime);
+
+  static final RegExp _re = RegExp(
+    r'^addalocation_(?:([0-9a-fA-F]{8})_)?'
+    r'(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})?\.adls$',
+  );
+
+  static BackupFileName? tryParse(String fileName) {
+    final m = _re.firstMatch(fileName);
+    if (m == null) return null;
+    final dt = DateTime(
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+      int.parse(m.group(4)!),
+      int.parse(m.group(5)!),
+      int.parse(m.group(6)!),
+      m.group(7) != null ? int.parse(m.group(7)!) : 0,
+    );
+    return BackupFileName(m.group(1)?.toLowerCase(), dt);
+  }
+
+  /// Construit le nom de fichier daté pour [deviceTag] (8 hex) à l'instant [now].
+  static String build({required String deviceTag, required DateTime now}) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final stamp = '${now.year}-${two(now.month)}-${two(now.day)}'
+        '_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+    return 'addalocation_${deviceTag}_$stamp.adls';
+  }
+}
+
+/// Sauvegarde détectée provenant d'un autre appareil sur le dossier partagé.
+class ForeignBackupInfo {
+  final String fileName;
+  final String deviceTag;
+  final DateTime dateTime;
+
+  const ForeignBackupInfo({
+    required this.fileName,
+    required this.deviceTag,
+    required this.dateTime,
+  });
+
+  /// Parmi [fileNames], renvoie la sauvegarde la plus récente écrite par un
+  /// autre appareil que [myTag] et postérieure à [since] (si fourni). `null`
+  /// si rien de neuf. Fonction pure : aucune I/O, testable directement.
+  static ForeignBackupInfo? newestForeign(
+    Iterable<String> fileNames, {
+    required String myTag,
+    DateTime? since,
+  }) {
+    ForeignBackupInfo? best;
+    for (final name in fileNames) {
+      final info = BackupFileName.tryParse(name);
+      if (info == null) continue;
+      final tag = info.deviceTag;
+      if (tag == null || tag == myTag) continue; // local / ancien format
+      if (since != null && !info.dateTime.isAfter(since)) continue;
+      if (best == null || info.dateTime.isAfter(best.dateTime)) {
+        best = ForeignBackupInfo(
+          fileName: name,
+          deviceTag: tag,
+          dateTime: info.dateTime,
+        );
+      }
+    }
+    return best;
+  }
+}
+
 /// Service d'auto-sauvegarde vers un dossier choisi par l'utilisateur
 /// (typiquement un dossier iCloud Drive / OneDrive / Drive / pCloud).
 ///
@@ -92,12 +174,17 @@ class AutoBackupService extends ChangeNotifier {
   static const String _kLastDeviceId = 'auto_backup_last_device_id';
   static const String _kLastFilePath = 'auto_backup_last_file_path';
   static const String _kDeviceId = 'auto_backup_device_id';
+  // Date (ISO) du dernier backup d'un AUTRE appareil déjà importé : sert de
+  // repère pour ne pas re-proposer un fichier déjà fusionné.
+  static const String _kLastImportedForeignIso =
+      'auto_backup_last_imported_foreign_iso';
 
   // Secure storage key (passphrase chiffrée par l'OS)
   static const String _ksPassphrase = 'auto_backup_passphrase';
 
   static const _secureStorage = FlutterSecureStorage();
   static const _debounce = Duration(minutes: 5);
+  static const _watchInterval = Duration(seconds: 60);
 
   AutoBackupState _state = AutoBackupState.disabled;
   AutoBackupState get state => _state;
@@ -106,7 +193,13 @@ class AutoBackupService extends ChangeNotifier {
   String? get lastError => _lastError;
 
   Timer? _debounceTimer;
+  Timer? _watchTimer;
   final List<StreamSubscription> _boxSubs = [];
+
+  /// Sauvegarde d'un autre appareil détectée et en attente d'import (`null`
+  /// si rien de neuf). Surfacé par l'UI pour proposer une fusion en 1 tap.
+  ForeignBackupInfo? _pendingForeign;
+  ForeignBackupInfo? get pendingForeign => _pendingForeign;
 
   /// Verrou anti-concurrence : empêche deux écritures simultanées (ex. bouton
   /// « Sauvegarder maintenant » pendant qu'un backup debouncé se déclenche,
@@ -116,6 +209,19 @@ class AutoBackupService extends ChangeNotifier {
   AutoBackupService() {
     _refreshState();
     _attachBoxWatchers();
+    _startWatchTimer();
+  }
+
+  /// 8 premiers caractères hexadécimaux d'un UUID d'appareil (tag court).
+  static String _shortDeviceTag(String deviceUuid) =>
+      deviceUuid.replaceAll('-', '').toLowerCase().padRight(8, '0').substring(0, 8);
+
+  /// (Re)démarre la surveillance périodique du dossier partagé.
+  void _startWatchTimer() {
+    _watchTimer?.cancel();
+    _watchTimer = Timer.periodic(_watchInterval, (_) {
+      checkForForeignBackups();
+    });
   }
 
   /// S'abonne aux box Hive métier pour déclencher automatiquement
@@ -206,6 +312,7 @@ class AutoBackupService extends ChangeNotifier {
     await deviceId(); // s'assure que le deviceId existe
     _refreshState();
     notifyListeners();
+    unawaited(checkForForeignBackups()); // détection immédiate
   }
 
   /// Désactive l'auto-backup et supprime la passphrase du keychain.
@@ -217,6 +324,7 @@ class AutoBackupService extends ChangeNotifier {
     await LocalDatabase.settingsBox.delete(_kBookmark);
     _state = AutoBackupState.disabled;
     _lastError = null;
+    _pendingForeign = null;
     _debounceTimer?.cancel();
     notifyListeners();
   }
@@ -313,15 +421,12 @@ class AutoBackupService extends ChangeNotifier {
         return const AutoBackupResult.skipped(reason: 'Aucun changement');
       }
 
-      // Écrit le .adls daté dans le dossier cible.
+      // Écrit le .adls daté, préfixé de l'identifiant d'appareil : ce tag
+      // permet aux autres appareils de reconnaître nos fichiers et de
+      // détecter les leurs (synchro multi-appareils).
       final now = DateTime.now();
-      final stamp = '${now.year}'
-          '-${now.month.toString().padLeft(2, '0')}'
-          '-${now.day.toString().padLeft(2, '0')}'
-          '_${now.hour.toString().padLeft(2, '0')}'
-          '${now.minute.toString().padLeft(2, '0')}'
-          '${now.second.toString().padLeft(2, '0')}';
-      final fileName = 'addalocation_$stamp.adls';
+      final myTag = _shortDeviceTag(await deviceId());
+      final fileName = BackupFileName.build(deviceTag: myTag, now: now);
       final targetPath = '$folderPath${Platform.pathSeparator}$fileName';
 
       // Génère le bundle chiffré via BackupService (écrit dans Documents).
@@ -362,89 +467,159 @@ class AutoBackupService extends ChangeNotifier {
   }
 
   /// Rotation pyramidale : garde 7 quotidiens, 4 hebdo, 12 mensuels, 1/an.
-  /// Supprime les fichiers .adls excédentaires.
+  /// Supprime les fichiers .adls excédentaires. La date est lue dans le nom
+  /// via [BackupFileName] (robuste au préfixe device et aux deux formats).
   Future<void> _pruneOldBackups(String folderPath) async {
     final dir = Directory(folderPath);
-    final files = dir
-        .listSync()
-        .whereType<File>()
-        .where((f) {
-          final n = f.uri.pathSegments.last;
-          return n.startsWith('addalocation_') && n.endsWith('.adls');
-        })
-        .toList()
-      ..sort((a, b) => b.path.compareTo(a.path)); // plus récent d'abord
-    if (files.isEmpty) return;
+    final parsed = <(File, DateTime)>[];
+    for (final f in dir.listSync().whereType<File>()) {
+      final info = BackupFileName.tryParse(f.uri.pathSegments.last);
+      if (info != null) parsed.add((f, info.dateTime));
+    }
+    if (parsed.isEmpty) return;
+    parsed.sort((a, b) => b.$2.compareTo(a.$2)); // plus récent d'abord
 
     final keep = <String>{};
     final now = DateTime.now();
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
 
-    // 7 derniers jours : 1 par jour
+    // 7 derniers jours : le plus récent de chaque jour
     for (var d = 0; d < 7; d++) {
-      final target = now.subtract(Duration(days: d));
-      final dailyTag =
-          '${target.year}-${target.month.toString().padLeft(2, '0')}-${target.day.toString().padLeft(2, '0')}';
-      final match = files.firstWhere(
-        (f) => f.path.contains(dailyTag),
-        orElse: () => File(''),
-      );
-      if (match.path.isNotEmpty) keep.add(match.path);
-    }
-
-    // 4 dernières semaines : 1 par semaine ISO
-    for (var w = 0; w < 4; w++) {
-      final target = now.subtract(Duration(days: 7 * w));
-      // semaine = lundi de cette semaine
-      final monday = target.subtract(Duration(days: target.weekday - 1));
-      final weekTag =
-          '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
-      // On garde le premier backup qui correspond à ce lundi ou plus tard cette semaine.
-      final candidates = files.where((f) {
-        for (var d = 0; d < 7; d++) {
-          final day = monday.add(Duration(days: d));
-          final tag =
-              '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-          if (f.path.contains(tag)) return true;
+      final day = now.subtract(Duration(days: d));
+      for (final p in parsed) {
+        if (sameDay(p.$2, day)) {
+          keep.add(p.$1.path);
+          break;
         }
-        return false;
-      }).toList();
-      if (candidates.isNotEmpty) keep.add(candidates.first.path);
-      // weekTag unused but kept for readability
-      assert(weekTag.isNotEmpty);
+      }
     }
 
-    // 12 derniers mois : 1 par mois
+    // 4 dernières semaines : le plus récent de chaque semaine (lun-dim)
+    for (var w = 0; w < 4; w++) {
+      final ref = now.subtract(Duration(days: 7 * w));
+      final monday = DateTime(ref.year, ref.month, ref.day)
+          .subtract(Duration(days: ref.weekday - 1));
+      final nextMonday = monday.add(const Duration(days: 7));
+      for (final p in parsed) {
+        if (!p.$2.isBefore(monday) && p.$2.isBefore(nextMonday)) {
+          keep.add(p.$1.path);
+          break;
+        }
+      }
+    }
+
+    // 12 derniers mois : le plus récent de chaque mois
     for (var m = 0; m < 12; m++) {
-      final target = DateTime(now.year, now.month - m, 1);
-      final monthTag =
-          '${target.year}-${target.month.toString().padLeft(2, '0')}';
-      final candidates = files.where((f) {
-        final n = f.uri.pathSegments.last;
-        // addalocation_YYYY-MM-DD_HHmm.adls
-        return n.startsWith('addalocation_$monthTag');
-      }).toList();
-      if (candidates.isNotEmpty) keep.add(candidates.first.path);
+      final ref = DateTime(now.year, now.month - m, 1);
+      for (final p in parsed) {
+        if (p.$2.year == ref.year && p.$2.month == ref.month) {
+          keep.add(p.$1.path);
+          break;
+        }
+      }
     }
 
-    // Une sauvegarde par année (la plus récente de chaque année)
-    final byYear = <int, File>{};
-    for (final f in files) {
-      final n = f.uri.pathSegments.last;
-      // addalocation_YYYY-...
-      final m = RegExp(r'addalocation_(\d{4})-').firstMatch(n);
-      if (m == null) continue;
-      final y = int.tryParse(m.group(1)!);
-      if (y == null) continue;
-      byYear[y] ??= f;
+    // Une sauvegarde par année (la plus récente)
+    final byYear = <int, String>{};
+    for (final p in parsed) {
+      byYear.putIfAbsent(p.$2.year, () => p.$1.path);
     }
-    keep.addAll(byYear.values.map((f) => f.path));
+    keep.addAll(byYear.values);
 
     // Supprime tout ce qui n'est pas dans keep
-    for (final f in files) {
-      if (!keep.contains(f.path)) {
+    for (final p in parsed) {
+      if (!keep.contains(p.$1.path)) {
         try {
-          await f.delete();
+          await p.$1.delete();
         } catch (_) {/* pas critique */}
+      }
+    }
+  }
+
+  /// Scrute le dossier partagé à la recherche d'une sauvegarde plus récente
+  /// écrite par un AUTRE appareil et non encore importée. Met à jour
+  /// [pendingForeign] et notifie l'UI le cas échéant. Lecture seule.
+  Future<void> checkForForeignBackups() async {
+    if (!isEnabled) return;
+    final storedFolder = folderPath;
+    if (storedFolder == null || storedFolder.isEmpty) return;
+    final bookmark = folderBookmark;
+    String? resolvedPath;
+    try {
+      if (bookmark != null) {
+        resolvedPath = await SecureFolder.startAccess(bookmark);
+      }
+      final folder = resolvedPath ?? storedFolder;
+      final dir = Directory(folder);
+      if (!dir.existsSync()) return;
+
+      final myTag = _shortDeviceTag(await deviceId());
+      final iso = LocalDatabase.settingsBox.get(_kLastImportedForeignIso);
+      final since = iso != null ? DateTime.tryParse(iso) : null;
+
+      final names =
+          dir.listSync().whereType<File>().map((f) => f.uri.pathSegments.last);
+      final found =
+          ForeignBackupInfo.newestForeign(names, myTag: myTag, since: since);
+
+      // Reconstituer le chemin absolu (le nom seul ne suffit pas pour lire).
+      final newPending = found == null
+          ? null
+          : ForeignBackupInfo(
+              fileName: '$folder${Platform.pathSeparator}${found.fileName}',
+              deviceTag: found.deviceTag,
+              dateTime: found.dateTime,
+            );
+
+      final changed = newPending?.fileName != _pendingForeign?.fileName;
+      _pendingForeign = newPending;
+      if (changed) notifyListeners();
+    } catch (_) {
+      // silencieux : la détection ne doit jamais perturber l'app
+    } finally {
+      if (bookmark != null && resolvedPath != null) {
+        await SecureFolder.stopAccess(bookmark);
+      }
+    }
+  }
+
+  /// Importe (fusionne) la sauvegarde étrangère en attente. La fusion garde,
+  /// pour chaque élément, la version la plus récente (`updatedAt`) ; les
+  /// quittances déjà présentes ne sont jamais écrasées. Mémorise la date du
+  /// fichier importé pour ne pas le re-proposer.
+  Future<AutoBackupResult> importForeignBackup() async {
+    final pending = _pendingForeign;
+    if (pending == null) {
+      return const AutoBackupResult.skipped(reason: 'Aucune donnée à importer');
+    }
+    final passphrase = await _readPassphrase();
+    if (passphrase == null || passphrase.isEmpty) {
+      return const AutoBackupResult.error('Passphrase manquante');
+    }
+    final bookmark = folderBookmark;
+    String? resolvedPath;
+    try {
+      if (bookmark != null) {
+        resolvedPath = await SecureFolder.startAccess(bookmark);
+      }
+      final file = File(pending.fileName);
+      if (!file.existsSync()) {
+        return const AutoBackupResult.error('Fichier introuvable');
+      }
+      final bytes = await file.readAsBytes();
+      await BackupService()
+          .importEncrypted(bytes: bytes, passphrase: passphrase);
+      await LocalDatabase.settingsBox
+          .put(_kLastImportedForeignIso, pending.dateTime.toIso8601String());
+      _pendingForeign = null;
+      notifyListeners();
+      return AutoBackupResult.success(pending.fileName);
+    } catch (e) {
+      return AutoBackupResult.error(e.toString());
+    } finally {
+      if (bookmark != null && resolvedPath != null) {
+        await SecureFolder.stopAccess(bookmark);
       }
     }
   }
@@ -475,6 +650,7 @@ class AutoBackupService extends ChangeNotifier {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _watchTimer?.cancel();
     for (final s in _boxSubs) {
       s.cancel();
     }

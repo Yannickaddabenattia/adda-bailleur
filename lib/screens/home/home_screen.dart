@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_card.dart';
 import '../../widgets/backup_status_badge.dart';
+import '../../widgets/foreign_backup_banner.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
 import '../../services/credit_service.dart';
@@ -156,6 +157,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           ),
+          const ForeignBackupBanner(),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
             child: Column(
