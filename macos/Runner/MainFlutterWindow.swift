@@ -134,6 +134,87 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
+    // ─── Sauvegarde auto : dossier externe choisi + security-scoped bookmark ───
+    // Permet d'écrire durablement dans un dossier de l'utilisateur (pCloud
+    // Drive, disque virtuel monté, NAS, OneDrive…) et de conserver l'accès
+    // après relance de l'app, ce que le bac à sable exige.
+    var scopedURLs: [String: URL] = [:] // bookmark base64 -> URL en cours d'accès
+    let folderChannel = FlutterMethodChannel(
+      name: "adda_location/secure_folder",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    folderChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "pickDirectory":
+        DispatchQueue.main.async {
+          let panel = NSOpenPanel()
+          panel.title = "Choisir le dossier de sauvegarde"
+          panel.message = "Sélectionnez un dossier (pCloud, disque, NAS…) où "
+            + "ADDA Bailleur écrira ses sauvegardes chiffrées."
+          panel.canChooseFiles = false
+          panel.canChooseDirectories = true
+          panel.allowsMultipleSelection = false
+          panel.canCreateDirectories = true
+          panel.begin { response in
+            guard response == .OK, let url = panel.url else {
+              result(nil)
+              return
+            }
+            do {
+              let data = try url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+              )
+              result(["path": url.path, "bookmark": data.base64EncodedString()])
+            } catch {
+              // Bookmark impossible : on renvoie au moins le chemin (accès
+              // valable pour la session courante).
+              result(["path": url.path, "bookmark": ""])
+            }
+          }
+        }
+      case "startAccess":
+        guard let args = call.arguments as? [String: Any],
+              let bookmark = args["bookmark"] as? String,
+              let data = Data(base64Encoded: bookmark) else {
+          result(FlutterError(code: "BAD_ARGS",
+                              message: "bookmark manquant ou invalide",
+                              details: nil))
+          return
+        }
+        do {
+          var stale = false
+          let url = try URL(
+            resolvingBookmarkData: data,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &stale
+          )
+          if url.startAccessingSecurityScopedResource() {
+            scopedURLs[bookmark] = url
+            result(["path": url.path, "stale": stale])
+          } else {
+            result(FlutterError(code: "ACCESS_DENIED",
+                                message: "Accès refusé au dossier de sauvegarde",
+                                details: nil))
+          }
+        } catch {
+          result(FlutterError(code: "RESOLVE_FAILED",
+                              message: error.localizedDescription, details: nil))
+        }
+      case "stopAccess":
+        if let args = call.arguments as? [String: Any],
+           let bookmark = args["bookmark"] as? String,
+           let url = scopedURLs.removeValue(forKey: bookmark) {
+          url.stopAccessingSecurityScopedResource()
+        }
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     super.awakeFromNib()
   }
 }

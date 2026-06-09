@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/storage/secure_folder.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auto_backup_service.dart';
 
@@ -23,6 +24,7 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
   final _passphraseCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   String? _pickedFolder;
+  String? _pickedBookmark;
   bool _obscure = true;
   bool _busy = false;
   String? _testMessage;
@@ -32,6 +34,7 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
     super.initState();
     final svc = context.read<AutoBackupService>();
     _pickedFolder = svc.folderPath;
+    _pickedBookmark = svc.folderBookmark;
   }
 
   @override
@@ -42,9 +45,24 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
   }
 
   Future<void> _pickFolder() async {
-    final result = await getDirectoryPath();
-    if (result == null) return;
-    setState(() => _pickedFolder = result);
+    // Sur iOS/macOS, on passe par le sélecteur natif qui crée un bookmark
+    // security-scoped (accès persistant au dossier après relance). Ailleurs,
+    // sélection classique par chemin.
+    if (SecureFolder.isSupported) {
+      final picked = await SecureFolder.pickDirectory();
+      if (picked == null) return;
+      setState(() {
+        _pickedFolder = picked.path;
+        _pickedBookmark = picked.bookmark;
+      });
+    } else {
+      final result = await getDirectoryPath();
+      if (result == null) return;
+      setState(() {
+        _pickedFolder = result;
+        _pickedBookmark = null;
+      });
+    }
   }
 
   Future<void> _saveConfig() async {
@@ -60,6 +78,7 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
       await context.read<AutoBackupService>().configure(
             folderPath: _pickedFolder!,
             passphrase: _passphraseCtrl.text,
+            bookmark: _pickedBookmark,
           );
       if (!mounted) return;
       _passphraseCtrl.clear();

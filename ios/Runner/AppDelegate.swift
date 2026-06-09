@@ -1,11 +1,20 @@
 import Flutter
 import UIKit
+import UniformTypeIdentifiers
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate,
+                         UIDocumentPickerDelegate {
 
   private var methodChannel: FlutterMethodChannel?
+  private var folderChannel: FlutterMethodChannel?
   private var pendingFilePath: String?
+
+  /// Callback Flutter en attente pendant l'affichage du sélecteur de dossier.
+  private var folderPickerResult: FlutterResult?
+
+  /// URL security-scoped en cours d'accès, par bookmark (pour stopAccess).
+  private var scopedFolderURLs: [String: URL] = [:]
 
   override func application(
     _ application: UIApplication,
@@ -19,9 +28,11 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let messenger = engineBridge.applicationRegistrar.messenger()
+
     methodChannel = FlutterMethodChannel(
       name: "adda_location/incoming_file",
-      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+      binaryMessenger: messenger
     )
     methodChannel?.setMethodCallHandler { [weak self] call, result in
       guard let self = self else { return result(nil) }
@@ -33,6 +44,100 @@ import UIKit
         result(FlutterMethodNotImplemented)
       }
     }
+
+    // Sauvegarde auto : dossier externe choisi + security-scoped bookmark,
+    // pour écrire durablement sur pCloud / un disque virtuel / un fournisseur
+    // Fichiers, en conservant l'accès après relance.
+    folderChannel = FlutterMethodChannel(
+      name: "adda_location/secure_folder",
+      binaryMessenger: messenger
+    )
+    folderChannel?.setMethodCallHandler { [weak self] call, result in
+      self?.handleFolderCall(call, result) ?? result(nil)
+    }
+  }
+
+  private func handleFolderCall(_ call: FlutterMethodCall,
+                                _ result: @escaping FlutterResult) {
+    switch call.method {
+    case "pickDirectory":
+      if folderPickerResult != nil {
+        result(nil) // sélection déjà en cours
+        return
+      }
+      folderPickerResult = result
+      DispatchQueue.main.async {
+        let picker = UIDocumentPickerViewController(
+          forOpeningContentTypes: [UTType.folder], asCopy: false)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
+        self.topViewController()?.present(picker, animated: true)
+      }
+    case "startAccess":
+      guard let args = call.arguments as? [String: Any],
+            let bookmark = args["bookmark"] as? String,
+            let data = Data(base64Encoded: bookmark) else {
+        result(FlutterError(code: "BAD_ARGS",
+                            message: "bookmark manquant ou invalide", details: nil))
+        return
+      }
+      do {
+        var stale = false
+        let url = try URL(resolvingBookmarkData: data, options: [],
+                          relativeTo: nil, bookmarkDataIsStale: &stale)
+        if url.startAccessingSecurityScopedResource() {
+          scopedFolderURLs[bookmark] = url
+          result(["path": url.path, "stale": stale])
+        } else {
+          result(FlutterError(code: "ACCESS_DENIED",
+                              message: "Accès refusé au dossier de sauvegarde",
+                              details: nil))
+        }
+      } catch {
+        result(FlutterError(code: "RESOLVE_FAILED",
+                            message: error.localizedDescription, details: nil))
+      }
+    case "stopAccess":
+      if let args = call.arguments as? [String: Any],
+         let bookmark = args["bookmark"] as? String,
+         let url = scopedFolderURLs.removeValue(forKey: bookmark) {
+        url.stopAccessingSecurityScopedResource()
+      }
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  // MARK: - UIDocumentPickerDelegate
+
+  func documentPicker(_ controller: UIDocumentPickerViewController,
+                      didPickDocumentsAt urls: [URL]) {
+    let cb = folderPickerResult
+    folderPickerResult = nil
+    guard let url = urls.first else { cb?(nil); return }
+    let started = url.startAccessingSecurityScopedResource()
+    defer { if started { url.stopAccessingSecurityScopedResource() } }
+    do {
+      let data = try url.bookmarkData(options: [],
+                                      includingResourceValuesForKeys: nil,
+                                      relativeTo: nil)
+      cb?(["path": url.path, "bookmark": data.base64EncodedString()])
+    } catch {
+      cb?(["path": url.path, "bookmark": ""])
+    }
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    let cb = folderPickerResult
+    folderPickerResult = nil
+    cb?(nil)
+  }
+
+  private func topViewController() -> UIViewController? {
+    var top = self.window?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top
   }
 
   /// Appelé par iOS (AppDelegate classique) ou relayé par SceneDelegate.

@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/storage/local_database.dart';
+import '../core/storage/secure_folder.dart';
 import 'backup_service.dart';
 
 /// Statut courant de la sauvegarde automatique (consommé par le badge UI).
@@ -84,6 +85,7 @@ enum AutoBackupTrigger {
 class AutoBackupService extends ChangeNotifier {
   static const String _kEnabled = 'auto_backup_enabled';
   static const String _kFolderPath = 'auto_backup_folder_path';
+  static const String _kBookmark = 'auto_backup_folder_bookmark';
   static const String _kPassphraseStored = 'auto_backup_passphrase_stored';
   static const String _kLastAtIso = 'auto_backup_last_at_iso';
   static const String _kLastHash = 'auto_backup_last_hash';
@@ -156,6 +158,14 @@ class AutoBackupService extends ChangeNotifier {
   /// Chemin du dossier de destination (ex: ~/iCloud Drive/ADDA Bailleur/).
   String? get folderPath => LocalDatabase.settingsBox.get(_kFolderPath);
 
+  /// Bookmark security-scoped du dossier (base64), `null` si absent — l'accès
+  /// retombe alors sur le chemin (valable seulement pour la session courante
+  /// sur les plateformes en bac à sable).
+  String? get folderBookmark {
+    final b = LocalDatabase.settingsBox.get(_kBookmark);
+    return (b == null || b.isEmpty) ? null : b;
+  }
+
   /// Date ISO du dernier backup réussi, null si jamais lancé.
   DateTime? get lastBackupAt {
     final iso = LocalDatabase.settingsBox.get(_kLastAtIso);
@@ -182,12 +192,14 @@ class AutoBackupService extends ChangeNotifier {
   Future<void> configure({
     required String folderPath,
     required String passphrase,
+    String? bookmark,
   }) async {
     final dir = Directory(folderPath);
     if (!dir.existsSync()) {
       throw ArgumentError('Le dossier n\'existe pas : $folderPath');
     }
     await LocalDatabase.settingsBox.put(_kFolderPath, folderPath);
+    await LocalDatabase.settingsBox.put(_kBookmark, bookmark ?? '');
     await LocalDatabase.settingsBox.put(_kEnabled, 'true');
     await _secureStorage.write(key: _ksPassphrase, value: passphrase);
     await LocalDatabase.settingsBox.put(_kPassphraseStored, 'true');
@@ -202,6 +214,7 @@ class AutoBackupService extends ChangeNotifier {
     await LocalDatabase.settingsBox.put(_kEnabled, 'false');
     await _secureStorage.delete(key: _ksPassphrase);
     await LocalDatabase.settingsBox.put(_kPassphraseStored, 'false');
+    await LocalDatabase.settingsBox.delete(_kBookmark);
     _state = AutoBackupState.disabled;
     _lastError = null;
     _debounceTimer?.cancel();
@@ -262,7 +275,7 @@ class AutoBackupService extends ChangeNotifier {
   }
 
   Future<AutoBackupResult> _doBackup(
-      String folderPath, String passphrase) async {
+      String storedFolderPath, String passphrase) async {
     if (_backupInProgress) {
       return const AutoBackupResult.skipped(
           reason: 'Sauvegarde déjà en cours');
@@ -270,7 +283,16 @@ class AutoBackupService extends ChangeNotifier {
     _backupInProgress = true;
     _state = AutoBackupState.inProgress;
     notifyListeners();
+    final bookmark = folderBookmark;
+    String? resolvedPath;
     try {
+      // Résout le bookmark security-scoped pour (ré)obtenir un accès durable
+      // au dossier choisi (pCloud, disque virtuel, NAS…). Repli sur le chemin
+      // stocké si pas de bookmark (ancienne config / plateforme non sandboxée).
+      if (bookmark != null) {
+        resolvedPath = await SecureFolder.startAccess(bookmark);
+      }
+      final folderPath = resolvedPath ?? storedFolderPath;
       final svc = BackupService();
       // Vérifier le dossier
       final dir = Directory(folderPath);
@@ -332,6 +354,9 @@ class AutoBackupService extends ChangeNotifier {
       notifyListeners();
       return AutoBackupResult.error(_lastError!);
     } finally {
+      if (bookmark != null && resolvedPath != null) {
+        await SecureFolder.stopAccess(bookmark);
+      }
       _backupInProgress = false;
     }
   }
@@ -434,7 +459,10 @@ class AutoBackupService extends ChangeNotifier {
       _state = AutoBackupState.disabled;
       return;
     }
-    if (!Directory(folder).existsSync()) {
+    // Avec un bookmark, l'accès réel se vérifie à la sauvegarde (le dossier
+    // peut ne pas être « stat-able » sans résoudre le scope sécurisé). Sans
+    // bookmark, on vérifie l'existence du chemin.
+    if (folderBookmark == null && !Directory(folder).existsSync()) {
       _state = AutoBackupState.error;
       _lastError = 'Dossier inaccessible : $folder';
       return;
