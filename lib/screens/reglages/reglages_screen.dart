@@ -7,6 +7,7 @@ import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
 import '../backup/backup_screen.dart';
 import '../share/share_with_tenant_screen.dart';
+import 'cloud_sync_screen.dart';
 import 'confidentialite_screen.dart';
 
 class ReglagesScreen extends StatelessWidget {
@@ -66,6 +67,20 @@ class ReglagesScreen extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const BackupScreen()),
+                ),
+              ),
+              Divider(height: 1, color: context.dividerColor),
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_outlined,
+                    color: AppColors.primary),
+                title: const Text('Synchronisation cloud'),
+                subtitle: Text(
+                  'pCloud · Dropbox · Drive · iCloud · chiffré',
+                  style: TextStyle(color: context.textSecondaryColor),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CloudSyncScreen()),
                 ),
               ),
               Divider(height: 1, color: context.dividerColor),

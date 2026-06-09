@@ -8,6 +8,8 @@ import 'screens/splash/splash_screen.dart';
 import 'services/avenant_service.dart';
 import 'services/auto_backup_service.dart';
 import 'services/bail_template_service.dart';
+import 'services/cloud/cloud_sync_service.dart';
+import 'services/master_key_service.dart';
 import 'services/contrat_bail_service.dart';
 import 'services/credit_service.dart';
 import 'services/depense_service.dart';
@@ -99,6 +101,9 @@ class _AddaLocationAppState extends State<AddaLocationApp>
         ChangeNotifierProvider(create: (_) => ContratBailService()),
         ChangeNotifierProvider(create: (_) => BailTemplateService()),
         ChangeNotifierProvider(create: (_) => AutoBackupService()),
+        ChangeNotifierProvider(create: (_) => MasterKeyService()),
+        ChangeNotifierProvider(
+            create: (ctx) => CloudSyncService(ctx.read<MasterKeyService>())),
         ChangeNotifierProvider(create: (_) => AvenantService()),
         ChangeNotifierProvider(create: (_) => DiagnosticService()),
         ChangeNotifierProvider(create: (_) => RappelService()),
