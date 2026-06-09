@@ -317,6 +317,22 @@ class AutoBackupService extends ChangeNotifier {
     unawaited(checkForForeignBackups()); // détection immédiate
   }
 
+  /// Met à jour le dossier cible (et son bookmark/URI) sans toucher au reste
+  /// de la configuration — utile pour re-sélectionner un dossier alors que la
+  /// sauvegarde est déjà activée.
+  Future<void> updateFolder({
+    required String folderPath,
+    String? bookmark,
+  }) async {
+    if (!Platform.isAndroid && !Directory(folderPath).existsSync()) {
+      throw ArgumentError('Le dossier n\'existe pas : $folderPath');
+    }
+    await LocalDatabase.settingsBox.put(_kFolderPath, folderPath);
+    await LocalDatabase.settingsBox.put(_kBookmark, bookmark ?? '');
+    _refreshState();
+    notifyListeners();
+  }
+
   /// Désactive l'auto-backup et supprime la passphrase du keychain.
   /// N'efface PAS les fichiers .adls déjà écrits dans le cloud.
   Future<void> disable() async {

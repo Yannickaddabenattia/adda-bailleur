@@ -65,34 +65,42 @@ class _AutoBackupSettingsScreenState extends State<AutoBackupSettingsScreen> {
   }
 
   Future<void> _pickFolder() async {
-    // Android : Storage Access Framework (conforme Play Store) — l'URI
-    // d'arborescence sert de "chemin", la permission est persistante.
+    String? folder;
+    String? bookmark;
     if (Platform.isAndroid) {
+      // Storage Access Framework (conforme Play Store) : l'URI d'arborescence
+      // sert de "chemin", la permission est persistante.
       final picked = await AndroidSaf.pickDirectory();
       if (picked == null) return;
-      setState(() {
-        _pickedFolder = picked.uri;
-        _pickedBookmark = '';
-      });
-      return;
-    }
-    // Sur iOS/macOS, on passe par le sélecteur natif qui crée un bookmark
-    // security-scoped (accès persistant au dossier après relance). Ailleurs,
-    // sélection classique par chemin.
-    if (SecureFolder.isSupported) {
+      folder = picked.uri;
+      bookmark = '';
+    } else if (SecureFolder.isSupported) {
+      // iOS/macOS : sélecteur natif + bookmark security-scoped (persistant).
       final picked = await SecureFolder.pickDirectory();
       if (picked == null) return;
-      setState(() {
-        _pickedFolder = picked.path;
-        _pickedBookmark = picked.bookmark;
-      });
+      folder = picked.path;
+      bookmark = picked.bookmark;
     } else {
       final result = await getDirectoryPath();
       if (result == null) return;
-      setState(() {
-        _pickedFolder = result;
-        _pickedBookmark = null;
-      });
+      folder = result;
+      bookmark = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _pickedFolder = folder;
+      _pickedBookmark = bookmark;
+    });
+    // Si la sauvegarde est déjà activée, persiste tout de suite le nouveau
+    // dossier (sinon le re-choix resterait sans effet).
+    final svc = context.read<AutoBackupService>();
+    if (svc.isEnabled) {
+      await svc.updateFolder(folderPath: folder, bookmark: bookmark);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dossier de sauvegarde mis à jour.')),
+        );
+      }
     }
   }
 
