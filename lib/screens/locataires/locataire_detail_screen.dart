@@ -6,14 +6,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/email_sender.dart';
 import '../../core/storage/contrat_storage.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
+import '../../services/dossier_locataire_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/quittance_service.dart';
@@ -120,6 +123,19 @@ class LocataireDetailScreen extends StatelessWidget {
                   loyerEncaisse: loyerEncaisse,
                   depuisLabel: depuisLabel,
                   dureeLabel: dureeLabel,
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _envoyerDossier(context, locataire),
+                  icon: const Icon(Icons.send_outlined),
+                  label: const Text('Envoyer le dossier au locataire'),
                 ),
               ),
             ),
@@ -269,6 +285,141 @@ class LocataireDetailScreen extends StatelessWidget {
     if (years > 0) parts.add('$years an${years > 1 ? 's' : ''}');
     if (restMonths > 0) parts.add('$restMonths mois');
     return parts.isEmpty ? 'Ce mois-ci' : parts.join(' ');
+  }
+
+  /// Demande le format + la qualité photos avant de générer le dossier.
+  Future<({DossierFormat format, DossierQualite qualite})?> _askDossierOptions(
+      BuildContext context) {
+    DossierFormat fmt = DossierFormat.pdfFusionne;
+    DossierQualite q = DossierQualite.leger;
+    return showDialog<({DossierFormat format, DossierQualite qualite})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Envoyer le dossier'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Format',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              SegmentedButton<DossierFormat>(
+                segments: const [
+                  ButtonSegment(
+                      value: DossierFormat.pdfFusionne,
+                      label: Text('PDF fusionné')),
+                  ButtonSegment(
+                      value: DossierFormat.zip, label: Text('ZIP')),
+                ],
+                selected: {fmt},
+                onSelectionChanged: (s) => setLocal(() => fmt = s.first),
+              ),
+              const SizedBox(height: 14),
+              const Text('Qualité photos',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              SegmentedButton<DossierQualite>(
+                segments: const [
+                  ButtonSegment(
+                      value: DossierQualite.leger,
+                      label: Text('Léger (e-mail)')),
+                  ButtonSegment(
+                      value: DossierQualite.max, label: Text('Max')),
+                ],
+                selected: {q},
+                onSelectionChanged: (s) => setLocal(() => q = s.first),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, (format: fmt, qualite: q)),
+              child: const Text('Générer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Génère le dossier (quittances + bail + EDL) et ouvre la feuille de
+  /// partage. Universel : PDF ou ZIP standard, ouvrable sans ADDA Locataire.
+  Future<void> _envoyerDossier(
+      BuildContext context, Locataire locataire) async {
+    final opts = await _askDossierOptions(context);
+    if (opts == null) return;
+    if (!context.mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    DossierExport export;
+    try {
+      export = await DossierLocataireService.build(
+        locataire,
+        format: opts.format,
+        qualite: opts.qualite,
+      );
+    } catch (e) {
+      if (context.mounted) Navigator.of(context).pop();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors de la génération : $e')),
+        );
+      }
+      return;
+    }
+    if (context.mounted) Navigator.of(context).pop();
+    if (!context.mounted) return;
+    if (export.docCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Aucun document à envoyer pour ce locataire.')),
+      );
+      return;
+    }
+    if (export.sizeBytes > DossierLocataireService.seuilEmailOctets) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Fichier volumineux'),
+          content: Text(
+            'Le dossier fait ${export.sizeMo.toStringAsFixed(1)} Mo — '
+            'probablement trop gros pour un e-mail.\n\n'
+            'Conseil : relance en qualité « Léger », ou partage-le via un '
+            'lien cloud (pCloud) depuis la fenêtre de partage.',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Partager quand même')),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+    if (!context.mounted) return;
+    // Écrit dans un fichier temporaire puis ouvre la feuille de partage avec
+    // l'objet et le corps d'e-mail pré-remplis (noms + liste des documents).
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/${export.filename}';
+    await File(path).writeAsBytes(export.bytes, flush: true);
+    await EmailSender.sendWithAttachment(
+      path: path,
+      subject: export.emailSubject,
+      body: export.emailBody,
+      recipients: export.recipientEmails,
+      mimeType: export.isPdf ? 'application/pdf' : 'application/zip',
+    );
   }
 
   void _confirmDelete(BuildContext context, Locataire locataire) {
@@ -1748,6 +1899,14 @@ class _LogementCard extends StatelessWidget {
         return Icons.apartment_rounded;
       case LogementType.studio:
         return Icons.weekend_outlined;
+      case LogementType.garage:
+        return Icons.garage_outlined;
+      case LogementType.parking:
+        return Icons.local_parking_rounded;
+      case LogementType.box:
+        return Icons.inventory_2_outlined;
+      case LogementType.localCommercial:
+        return Icons.storefront_outlined;
       case LogementType.autre:
         return Icons.location_city_outlined;
     }

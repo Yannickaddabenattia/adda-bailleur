@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../models/locataire.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
@@ -159,6 +160,8 @@ class _CoLocatairesEditScreenState extends State<CoLocatairesEditScreen> {
             dateEntree: _dateEntree,
             notes: _notes.text,
             isPrincipal: d.isPrincipal,
+            dateNaissance: d.dateNaissance,
+            adresse: d.adresse.text,
           );
           await svc.add(created);
           keptIds.add(created.id);
@@ -171,6 +174,10 @@ class _CoLocatairesEditScreenState extends State<CoLocatairesEditScreen> {
           l.phone = d.phone.text.trim().isEmpty
               ? null
               : d.phone.text.trim();
+          l.adresse = d.adresse.text.trim().isEmpty
+              ? null
+              : d.adresse.text.trim();
+          l.dateNaissance = d.dateNaissance;
           l.dateEntree = _dateEntree;
           l.notes = _notes.text.trim();
           l.isPrincipal = d.isPrincipal;
@@ -391,6 +398,8 @@ class _Draft {
   TextEditingController lastName;
   TextEditingController email;
   TextEditingController phone;
+  TextEditingController adresse;
+  DateTime? dateNaissance;
   bool isPrincipal;
   DateTime? dateEntree;
   String notes;
@@ -401,6 +410,8 @@ class _Draft {
     required this.lastName,
     required this.email,
     required this.phone,
+    required this.adresse,
+    this.dateNaissance,
     required this.isPrincipal,
     this.dateEntree,
     this.notes = '',
@@ -413,6 +424,8 @@ class _Draft {
       lastName: TextEditingController(text: l.lastName),
       email: TextEditingController(text: l.email),
       phone: TextEditingController(text: l.phone ?? ''),
+      adresse: TextEditingController(text: l.adresse ?? ''),
+      dateNaissance: l.dateNaissance,
       isPrincipal: l.isPrincipal,
       dateEntree: l.dateEntree,
       notes: l.notes,
@@ -426,6 +439,7 @@ class _Draft {
       lastName: TextEditingController(),
       email: TextEditingController(),
       phone: TextEditingController(),
+      adresse: TextEditingController(),
       isPrincipal: isPrincipal,
     );
   }
@@ -435,6 +449,7 @@ class _Draft {
     lastName.dispose();
     email.dispose();
     phone.dispose();
+    adresse.dispose();
   }
 }
 
@@ -1065,6 +1080,89 @@ class _LocataireCard extends StatelessWidget {
                     controller: draft.phone,
                     keyboardType: TextInputType.phone,
                     onChanged: (_) => onChangedAny(),
+                  ),
+                  _FormField(
+                    label: 'ADRESSE',
+                    icon: Icons.home_outlined,
+                    iconBg: const Color(0xFFDDE7F8),
+                    iconFg: const Color(0xFF2B6CB0),
+                    controller: draft.adresse,
+                    capitalization: TextCapitalization.sentences,
+                    onChanged: (_) => onChangedAny(),
+                  ),
+                  // Date de naissance (DatePicker)
+                  InkWell(
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate:
+                            draft.dateNaissance ?? DateTime(now.year - 30),
+                        firstDate: DateTime(1900),
+                        lastDate: now,
+                        locale: const Locale('fr', 'FR'),
+                      );
+                      if (picked != null) {
+                        // Setter d'état local : on re-build via le parent
+                        draft.dateNaissance = picked;
+                        onChangedAny();
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE0B2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.cake_outlined,
+                              color: Color(0xFFE65100),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'DATE DE NAISSANCE',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.6,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  draft.dateNaissance == null
+                                      ? 'Non renseignée'
+                                      : '${draft.dateNaissance!.day.toString().padLeft(2, '0')}/'
+                                          '${draft.dateNaissance!.month.toString().padLeft(2, '0')}/'
+                                          '${draft.dateNaissance!.year}',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (draft.dateNaissance != null)
+                            IconButton(
+                              iconSize: 18,
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                draft.dateNaissance = null;
+                                onChangedAny();
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Row(

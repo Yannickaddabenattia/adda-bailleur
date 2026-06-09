@@ -45,6 +45,17 @@ class EdlTemplates {
           _cuisine(),
           _salleDeBain(),
         ];
+      case LogementType.garage:
+      case LogementType.parking:
+      case LogementType.box:
+        return [
+          _pieceDeVie('Espace de stationnement'),
+        ];
+      case LogementType.localCommercial:
+        return [
+          _pieceDeVie('Local commercial'),
+          _salleDeBain(),
+        ];
     }
   }
 

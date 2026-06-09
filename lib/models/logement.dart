@@ -6,6 +6,10 @@ enum LogementType {
   appartement,
   maison,
   studio,
+  garage,
+  parking,
+  box,
+  localCommercial,
   autre;
 
   String get label {
@@ -16,6 +20,14 @@ enum LogementType {
         return 'Maison';
       case LogementType.studio:
         return 'Studio';
+      case LogementType.garage:
+        return 'Garage';
+      case LogementType.parking:
+        return 'Parking';
+      case LogementType.box:
+        return 'Box';
+      case LogementType.localCommercial:
+        return 'Local commercial';
       case LogementType.autre:
         return 'Autre';
     }
@@ -30,11 +42,13 @@ enum LogementType {
 }
 
 /// Statut fiscal d'un logement (revenus fonciers).
-/// Phase 1 : seul `locationNue` est pleinement supporté.
 enum StatutFiscal {
   locationNue,
   lmnp,
+  lmp,
+  viagerLmnp,
   sci,
+  locCommercialEquipe,
   autre;
 
   String get label {
@@ -43,15 +57,21 @@ enum StatutFiscal {
         return 'Location nue';
       case StatutFiscal.lmnp:
         return 'LMNP';
+      case StatutFiscal.lmp:
+        return 'LMP (Loueur Meublé Professionnel)';
+      case StatutFiscal.viagerLmnp:
+        return 'Viager LMNP';
       case StatutFiscal.sci:
-        return 'SCI (à l\'IR)';
+        return 'SCI';
+      case StatutFiscal.locCommercialEquipe:
+        return 'Local commercial loué équipé';
       case StatutFiscal.autre:
         return 'Autre / non déclaré';
     }
   }
 }
 
-/// Régime fiscal pour la location nue.
+/// Régime fiscal pour la location nue (StatutFiscal.locationNue).
 enum RegimeFiscal {
   reel,
   microFoncier;
@@ -66,19 +86,46 @@ enum RegimeFiscal {
   }
 }
 
+/// Régime fiscal pour la location meublée (LMNP / LMP).
+enum RegimeLmnp {
+  microBIC,
+  reelBIC,
+  tourismeClasse,
+  tourismeNonClasse;
+
+  String get label {
+    switch (this) {
+      case RegimeLmnp.microBIC:
+        return 'Micro-BIC (abattement 50 %)';
+      case RegimeLmnp.reelBIC:
+        return 'Réel BIC (charges + amortissement)';
+      case RegimeLmnp.tourismeClasse:
+        return 'Tourisme classé (abattement 71 %)';
+      case RegimeLmnp.tourismeNonClasse:
+        return 'Tourisme non classé (abattement 30 %)';
+    }
+  }
+}
+
 /// Dispositif fiscal lié à un logement.
 ///
-/// Deux familles :
-/// - **Réduction d'impôt** (Pinel, Pinel+, Denormandie) : déduit directement
-///   de l'IR additionnel foncier, plafonnée par le plafond des niches.
-/// - **Abattement sur recettes** (Borloo Ancien intermédiaire/social/très
-///   social) : réduit les recettes brutes du logement dans le calcul foncier
-///   réel. Incompatible avec le micro-foncier.
+/// Familles :
+/// - **Réduction d'impôt sur prix de revient** (Pinel, Pinel+, Denormandie) :
+///   déduit directement de l'IR, plafonnée par le plafond global des niches.
+/// - **Réduction d'impôt sur loyers bruts** (Loc'Avantages 3 niveaux) :
+///   convention Anah 6 ans, applicable au régime réel foncier.
+/// - **Abattement sur recettes** (Borloo Ancien — dispositif clos en 2022,
+///   conservé pour les engagements en cours).
 enum DispositifFiscal {
   aucun,
   pinel,
   pinelPlus,
   denormandie,
+  locAvantagesIntermediaire,
+  locAvantagesIntermediaireIL,
+  locAvantagesSocial,
+  locAvantagesSocialIL,
+  locAvantagesTresSocialIL,
   borlooAncienIntermediaire,
   borlooAncienSocial,
   borlooAncienTresSocial;
@@ -93,12 +140,22 @@ enum DispositifFiscal {
         return 'Pinel+';
       case DispositifFiscal.denormandie:
         return 'Denormandie';
+      case DispositifFiscal.locAvantagesIntermediaire:
+        return "Loc'Avantages intermédiaire (15 %)";
+      case DispositifFiscal.locAvantagesIntermediaireIL:
+        return "Loc'Avantages intermédiaire + IL (20 %)";
+      case DispositifFiscal.locAvantagesSocial:
+        return "Loc'Avantages social (35 %)";
+      case DispositifFiscal.locAvantagesSocialIL:
+        return "Loc'Avantages social + IL (40 %)";
+      case DispositifFiscal.locAvantagesTresSocialIL:
+        return "Loc'Avantages très social + IL (65 %)";
       case DispositifFiscal.borlooAncienIntermediaire:
-        return 'Borloo Ancien intermédiaire (30 %)';
+        return 'Borloo Ancien intermédiaire (30 %) — clos';
       case DispositifFiscal.borlooAncienSocial:
-        return 'Borloo Ancien social (60 %)';
+        return 'Borloo Ancien social (60 %) — clos';
       case DispositifFiscal.borlooAncienTresSocial:
-        return 'Borloo Ancien très social (70 %)';
+        return 'Borloo Ancien très social (70 %) — clos';
     }
   }
 
@@ -125,6 +182,25 @@ enum DispositifFiscal {
         return 0.70;
       default:
         return 0;
+    }
+  }
+}
+
+/// Type d'assainissement du logement (conditionne le diagnostic
+/// assainissement non collectif).
+enum TypeAssainissement {
+  collectif,
+  nonCollectif,
+  inconnu;
+
+  String get label {
+    switch (this) {
+      case TypeAssainissement.collectif:
+        return 'Tout-à-l\'égout (collectif)';
+      case TypeAssainissement.nonCollectif:
+        return 'Non collectif (fosse…)';
+      case TypeAssainissement.inconnu:
+        return 'Non renseigné';
     }
   }
 }
@@ -173,6 +249,33 @@ class Logement {
   /// esprit que [dateDebutDispositif].
   DateTime? dateFinDispositif;
 
+  // ─── Données conditionnant les diagnostics obligatoires (Phase 3) ─────────
+  /// Année de construction (plomb si < 1949).
+  int? anneeConstruction;
+
+  /// Date du permis de construire (amiante si < juillet 1997).
+  DateTime? datePermisConstruire;
+
+  /// Date de l'installation électrique (diagnostic élec requis si > 15 ans).
+  DateTime? dateInstallationElectrique;
+
+  /// Date de l'installation de gaz (diagnostic gaz requis si > 15 ans).
+  DateTime? dateInstallationGaz;
+
+  /// Type d'assainissement (diagnostic requis si non collectif).
+  TypeAssainissement typeAssainissement;
+
+  /// Le logement est en zone à risque termites (diagnostic requis).
+  bool zoneTermites;
+
+  /// Régime fiscal pour les locations meublées (LMNP / LMP). Ignoré pour
+  /// les locations nues — c'est `regimeFiscal` qui prime.
+  RegimeLmnp regimeLmnp;
+
+  /// Travaux de rénovation énergétique en cours (DPE E/F/G → A/B/C/D).
+  /// Active le plafond de déficit foncier renforcé à 21 400 €.
+  bool enRenovationEnergetique;
+
   Logement({
     required this.id,
     required this.libelle,
@@ -199,6 +302,14 @@ class Logement {
     this.amortissementAnnuel = 0,
     this.dateDebutDispositif,
     this.dateFinDispositif,
+    this.anneeConstruction,
+    this.datePermisConstruire,
+    this.dateInstallationElectrique,
+    this.dateInstallationGaz,
+    this.typeAssainissement = TypeAssainissement.inconnu,
+    this.zoneTermites = false,
+    this.regimeLmnp = RegimeLmnp.microBIC,
+    this.enRenovationEnergetique = false,
   }) : contratBailPaths = contratBailPaths ?? <String>[];
 
   /// `true` si le dispositif fiscal du logement est en vigueur pour [year]
@@ -329,13 +440,33 @@ class LogementAdapter extends TypeAdapter<Logement> {
       dateFinDispositif: fields[24] == null
           ? null
           : DateTime.parse(fields[24] as String),
+      anneeConstruction: (fields[25] as num?)?.toInt(),
+      datePermisConstruire: fields[26] == null
+          ? null
+          : DateTime.parse(fields[26] as String),
+      dateInstallationElectrique: fields[27] == null
+          ? null
+          : DateTime.parse(fields[27] as String),
+      dateInstallationGaz: fields[28] == null
+          ? null
+          : DateTime.parse(fields[28] as String),
+      typeAssainissement: TypeAssainissement.values.firstWhere(
+        (t) => t.name == (fields[29] as String?),
+        orElse: () => TypeAssainissement.inconnu,
+      ),
+      zoneTermites: (fields[30] as bool?) ?? false,
+      regimeLmnp: RegimeLmnp.values.firstWhere(
+        (r) => r.name == (fields[31] as String?),
+        orElse: () => RegimeLmnp.microBIC,
+      ),
+      enRenovationEnergetique: (fields[32] as bool?) ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, Logement obj) {
     writer
-      ..writeByte(25)
+      ..writeByte(33)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -385,6 +516,22 @@ class LogementAdapter extends TypeAdapter<Logement> {
       ..writeByte(23)
       ..write(obj.dateDebutDispositif?.toIso8601String())
       ..writeByte(24)
-      ..write(obj.dateFinDispositif?.toIso8601String());
+      ..write(obj.dateFinDispositif?.toIso8601String())
+      ..writeByte(25)
+      ..write(obj.anneeConstruction)
+      ..writeByte(26)
+      ..write(obj.datePermisConstruire?.toIso8601String())
+      ..writeByte(27)
+      ..write(obj.dateInstallationElectrique?.toIso8601String())
+      ..writeByte(28)
+      ..write(obj.dateInstallationGaz?.toIso8601String())
+      ..writeByte(29)
+      ..write(obj.typeAssainissement.name)
+      ..writeByte(30)
+      ..write(obj.zoneTermites)
+      ..writeByte(31)
+      ..write(obj.regimeLmnp.name)
+      ..writeByte(32)
+      ..write(obj.enRenovationEnergetique);
   }
 }

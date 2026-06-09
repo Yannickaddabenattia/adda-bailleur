@@ -32,6 +32,7 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
   late TextEditingController _notes;
   late TextEditingController _prixRevient;
   late TextEditingController _amortissementAnnuel;
+  late TextEditingController _anneeConstruction;
   late LogementType _type;
   late StatutFiscal _statutFiscal;
   late RegimeFiscal _regimeFiscal;
@@ -41,6 +42,13 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
   DateTime? _dateFinDispositif;
   late int _dureeEngagement;
   String? _sciId;
+  DateTime? _datePermis;
+  DateTime? _dateElec;
+  DateTime? _dateGaz;
+  TypeAssainissement _assainissement = TypeAssainissement.inconnu;
+  bool _zoneTermites = false;
+  RegimeLmnp _regimeLmnp = RegimeLmnp.microBIC;
+  bool _enRenovationEnergetique = false;
   bool _saving = false;
 
   bool get _isEdit => widget.logement != null;
@@ -81,6 +89,15 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
     _dateFinDispositif = l?.dateFinDispositif;
     _dureeEngagement = l?.dureeEngagementAnnees ?? 9;
     _sciId = l?.sciId;
+    _anneeConstruction =
+        TextEditingController(text: l?.anneeConstruction?.toString() ?? '');
+    _datePermis = l?.datePermisConstruire;
+    _dateElec = l?.dateInstallationElectrique;
+    _dateGaz = l?.dateInstallationGaz;
+    _assainissement = l?.typeAssainissement ?? TypeAssainissement.inconnu;
+    _zoneTermites = l?.zoneTermites ?? false;
+    _regimeLmnp = l?.regimeLmnp ?? RegimeLmnp.microBIC;
+    _enRenovationEnergetique = l?.enRenovationEnergetique ?? false;
   }
 
   @override
@@ -97,7 +114,54 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
     _notes.dispose();
     _prixRevient.dispose();
     _amortissementAnnuel.dispose();
+    _anneeConstruction.dispose();
     super.dispose();
+  }
+
+  Future<DateTime?> _pickDiagDate(DateTime? current) async {
+    final now = DateTime.now();
+    return showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime(now.year - 20),
+      firstDate: DateTime(now.year - 120),
+      lastDate: now,
+      locale: const Locale('fr', 'FR'),
+    );
+  }
+
+  Widget _diagDateField({
+    required String label,
+    String? helper,
+    required DateTime? date,
+    required void Function(DateTime) onPicked,
+    required VoidCallback onClear,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () async {
+        final d = await _pickDiagDate(date);
+        if (d != null) onPicked(d);
+      },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+          prefixIcon: const Icon(Icons.event_outlined),
+          suffixIcon: date == null
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: onClear,
+                ),
+        ),
+        child: Text(
+          date == null
+              ? 'Non renseignée'
+              : '${date.day.toString().padLeft(2, '0')}/'
+                  '${date.month.toString().padLeft(2, '0')}/${date.year}',
+        ),
+      ),
+    );
   }
 
   Future<void> _pickDateAcquisition() async {
@@ -215,6 +279,14 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
             _dispositif == DispositifFiscal.aucun ? null : _dateDebutDispositif;
         l.dateFinDispositif =
             _dispositif == DispositifFiscal.aucun ? null : _dateFinDispositif;
+        l.anneeConstruction = int.tryParse(_anneeConstruction.text.trim());
+        l.datePermisConstruire = _datePermis;
+        l.dateInstallationElectrique = _dateElec;
+        l.dateInstallationGaz = _dateGaz;
+        l.typeAssainissement = _assainissement;
+        l.zoneTermites = _zoneTermites;
+        l.regimeLmnp = _regimeLmnp;
+        l.enRenovationEnergetique = _enRenovationEnergetique;
         await service.update(l);
       } else {
         final logement = Logement.create(
@@ -247,6 +319,15 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
             _dispositif == DispositifFiscal.aucun ? null : _dateDebutDispositif;
         logement.dateFinDispositif =
             _dispositif == DispositifFiscal.aucun ? null : _dateFinDispositif;
+        logement.anneeConstruction =
+            int.tryParse(_anneeConstruction.text.trim());
+        logement.datePermisConstruire = _datePermis;
+        logement.dateInstallationElectrique = _dateElec;
+        logement.dateInstallationGaz = _dateGaz;
+        logement.typeAssainissement = _assainissement;
+        logement.zoneTermites = _zoneTermites;
+        logement.regimeLmnp = _regimeLmnp;
+        logement.enRenovationEnergetique = _enRenovationEnergetique;
         await service.add(logement);
       }
       if (!mounted) return;
@@ -379,6 +460,62 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
                 ],
               ),
               const SizedBox(height: 20),
+              _Section(title: 'Diagnostics — caractéristiques'),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _anneeConstruction,
+                decoration: const InputDecoration(
+                  labelText: 'Année de construction',
+                  helperText: 'Plomb obligatoire si avant 1949.',
+                  prefixIcon: Icon(Icons.foundation_outlined),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              _diagDateField(
+                label: 'Permis de construire',
+                helper: 'Amiante obligatoire si avant juillet 1997.',
+                date: _datePermis,
+                onPicked: (d) => setState(() => _datePermis = d),
+                onClear: () => setState(() => _datePermis = null),
+              ),
+              const SizedBox(height: 12),
+              _diagDateField(
+                label: 'Installation électrique',
+                helper: 'Diagnostic élec si plus de 15 ans.',
+                date: _dateElec,
+                onPicked: (d) => setState(() => _dateElec = d),
+                onClear: () => setState(() => _dateElec = null),
+              ),
+              const SizedBox(height: 12),
+              _diagDateField(
+                label: 'Installation de gaz',
+                helper: 'Diagnostic gaz si plus de 15 ans.',
+                date: _dateGaz,
+                onPicked: (d) => setState(() => _dateGaz = d),
+                onClear: () => setState(() => _dateGaz = null),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<TypeAssainissement>(
+                initialValue: _assainissement,
+                decoration: const InputDecoration(
+                  labelText: 'Assainissement',
+                  prefixIcon: Icon(Icons.water_drop_outlined),
+                ),
+                items: TypeAssainissement.values
+                    .map((t) =>
+                        DropdownMenuItem(value: t, child: Text(t.label)))
+                    .toList(),
+                onChanged: (v) =>
+                    setState(() => _assainissement = v ?? _assainissement),
+              ),
+              SwitchListTile(
+                value: _zoneTermites,
+                onChanged: (v) => setState(() => _zoneTermites = v),
+                title: const Text('Zone à risque termites'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 20),
               _Section(title: 'Loyer'),
               const SizedBox(height: 8),
               Row(
@@ -429,8 +566,36 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
               if (_statutFiscal == StatutFiscal.locationNue) ...[
                 const SizedBox(height: 12),
                 _RegimeAutoInfo(statut: _statutFiscal),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Rénovation énergétique en cours'),
+                  subtitle: const Text(
+                    'Déficit foncier renforcé à 21 400 € (DPE E/F/G → A/B/C/D).',
+                  ),
+                  value: _enRenovationEnergetique,
+                  onChanged: (v) =>
+                      setState(() => _enRenovationEnergetique = v),
+                ),
               ],
-              if (_statutFiscal == StatutFiscal.lmnp) ...[
+              if (_statutFiscal == StatutFiscal.lmnp ||
+                  _statutFiscal == StatutFiscal.lmp ||
+                  _statutFiscal == StatutFiscal.viagerLmnp) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<RegimeLmnp>(
+                  decoration: const InputDecoration(
+                    labelText: 'Régime LMNP / LMP',
+                  ),
+                  initialValue: _regimeLmnp,
+                  items: RegimeLmnp.values
+                      .map((r) => DropdownMenuItem(
+                            value: r,
+                            child: Text(r.label),
+                          ))
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => _regimeLmnp = v ?? _regimeLmnp),
+                ),
                 const SizedBox(height: 12),
                 _RegimeAutoInfo(statut: _statutFiscal),
               ],

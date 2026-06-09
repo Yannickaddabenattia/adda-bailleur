@@ -23,6 +23,7 @@ import '../diagnostics/diagnostic_list_screen.dart';
 import '../../services/contrat_bail_service.dart';
 import '../../services/diagnostic_service.dart';
 import 'revisions/revisions_loyer_screen.dart';
+import '../finance/bilan_logement_screen.dart';
 
 class LogementDetailScreen extends StatelessWidget {
   final String logementId;
@@ -174,6 +175,12 @@ class LogementDetailScreen extends StatelessWidget {
                 quittances: quittances,
                 money: money,
               ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _BilanAccessTile(logementId: logementId),
             ),
           ),
           SliverToBoxAdapter(
@@ -674,6 +681,14 @@ class _HeroCard extends StatelessWidget {
         return Icons.apartment_rounded;
       case LogementType.studio:
         return Icons.weekend_outlined;
+      case LogementType.garage:
+        return Icons.garage_outlined;
+      case LogementType.parking:
+        return Icons.local_parking_rounded;
+      case LogementType.box:
+        return Icons.inventory_2_outlined;
+      case LogementType.localCommercial:
+        return Icons.storefront_outlined;
       case LogementType.autre:
         return Icons.location_city_outlined;
     }
@@ -2591,6 +2606,69 @@ class _DiagnosticsSection extends StatelessWidget {
                           : const Color(0xFF64748B),
                       fontWeight:
                           expired > 0 ? FontWeight.w700 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BilanAccessTile extends StatelessWidget {
+  final String logementId;
+  const _BilanAccessTile({required this.logementId});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BilanLogementScreen(logementId: logementId),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFF059669).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.insights_outlined,
+                  color: Color(0xFF059669)),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bilan depuis acquisition',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Loyers, dépenses, crédits cumulés + rentabilité brute',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
                     ),
                   ),
                 ],

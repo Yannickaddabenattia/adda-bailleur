@@ -38,7 +38,9 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
   late TextEditingController _nouvelleAdresse;
   late TextEditingController _nouveauTelephone;
   late TextEditingController _nouvelEmail;
+  late TextEditingController _adresse;
   late Set<String> _selectedLogementIds;
+  DateTime? _dateNaissance;
   DateTime? _dateEntree;
   DateTime? _dateSortie;
   bool _isArchive = false;
@@ -71,6 +73,8 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
     _nouvelleAdresse = TextEditingController(text: l?.nouvelleAdresse ?? '');
     _nouveauTelephone = TextEditingController(text: l?.nouveauTelephone ?? '');
     _nouvelEmail = TextEditingController(text: l?.nouvelEmail ?? '');
+    _adresse = TextEditingController(text: l?.adresse ?? '');
+    _dateNaissance = l?.dateNaissance;
     _selectedLogementIds = Set<String>.from(
       l?.logementIds ??
           (widget.preselectedLogementIds?.isNotEmpty == true
@@ -98,7 +102,20 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
     _nouvelleAdresse.dispose();
     _nouveauTelephone.dispose();
     _nouvelEmail.dispose();
+    _adresse.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDateNaissance() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateNaissance ?? DateTime(now.year - 30),
+      firstDate: DateTime(now.year - 100),
+      lastDate: now,
+      locale: const Locale('fr', 'FR'),
+    );
+    if (picked != null) setState(() => _dateNaissance = picked);
   }
 
   Future<void> _pickDate() async {
@@ -154,6 +171,9 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
         l.logementIds = _selectedLogementIds.toList();
         l.dateEntree = _dateEntree;
         l.notes = _notes.text.trim();
+        l.dateNaissance = _dateNaissance;
+        l.adresse =
+            _adresse.text.trim().isEmpty ? null : _adresse.text.trim();
         l.dateSortie = dateSortieVal;
         l.raisonSortie = raisonSortieVal;
         l.loyerSortie = loyerSortieVal;
@@ -170,6 +190,8 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
           logementIds: _selectedLogementIds.toList(),
           dateEntree: _dateEntree,
           notes: _notes.text,
+          dateNaissance: _dateNaissance,
+          adresse: _adresse.text,
           dateSortie: dateSortieVal,
           raisonSortie: raisonSortieVal,
           loyerSortie: loyerSortieVal,
@@ -249,6 +271,41 @@ class _LocataireFormScreenState extends State<LocataireFormScreen> {
                   prefixIcon: Icon(Icons.phone_outlined),
                 ),
                 keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _pickDateNaissance,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Date de naissance',
+                    prefixIcon: Icon(Icons.cake_outlined),
+                  ),
+                  child: Text(
+                    _dateNaissance == null
+                        ? 'Non renseignée'
+                        : '${_dateNaissance!.day.toString().padLeft(2, '0')}/'
+                            '${_dateNaissance!.month.toString().padLeft(2, '0')}/'
+                            '${_dateNaissance!.year}',
+                    style: TextStyle(
+                      color: _dateNaissance == null
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _adresse,
+                decoration: const InputDecoration(
+                  labelText: 'Adresse postale',
+                  prefixIcon: Icon(Icons.home_outlined),
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                minLines: 1,
+                maxLines: 2,
               ),
               const SizedBox(height: 12),
               InkWell(
