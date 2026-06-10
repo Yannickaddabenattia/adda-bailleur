@@ -65,13 +65,23 @@ import UniformTypeIdentifiers
         result(nil) // sélection déjà en cours
         return
       }
-      folderPickerResult = result
-      DispatchQueue.main.async {
-        let picker = UIDocumentPickerViewController(
-          forOpeningContentTypes: [UTType.folder], asCopy: false)
-        picker.delegate = self
-        picker.allowsMultipleSelection = false
-        self.topViewController()?.present(picker, animated: true)
+      // Le sélecteur de DOSSIER (forOpeningContentTypes:/UTType.folder) est
+      // disponible à partir d'iOS 14. Sur iOS 13 (très marginal), on renvoie
+      // une erreur propre côté Dart.
+      if #available(iOS 14.0, *) {
+        folderPickerResult = result
+        DispatchQueue.main.async {
+          let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [UTType.folder], asCopy: false)
+          picker.delegate = self
+          picker.allowsMultipleSelection = false
+          self.topViewController()?.present(picker, animated: true)
+        }
+      } else {
+        result(FlutterError(
+          code: "UNSUPPORTED",
+          message: "La sélection d'un dossier de sauvegarde nécessite iOS 14 ou plus récent.",
+          details: nil))
       }
     case "startAccess":
       guard let args = call.arguments as? [String: Any],
