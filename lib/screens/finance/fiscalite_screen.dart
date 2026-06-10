@@ -8,6 +8,12 @@ import '../../services/fiscalite_service.dart';
 import 'fiscal_settings_screen.dart';
 import 'sci_list_screen.dart';
 
+/// Formate un taux de prélèvements sociaux en pourcentage français :
+/// 0.172 → "17,2 %", 0.186 → "18,6 %". Les libellés sont ainsi toujours
+/// alignés sur le taux réellement calculé pour l'année.
+String _pctPS(double rate) =>
+    '${(rate * 100).toStringAsFixed(1).replaceAll('.', ',')} %';
+
 /// Tableau de bord fiscal — phase 1 (location nue régime réel).
 class FiscaliteScreen extends StatefulWidget {
   const FiscaliteScreen({super.key});
@@ -397,21 +403,25 @@ class _ImpotCard extends StatelessWidget {
           // - les deux → 2 sous-lignes détaillées
           if (calc.psFoncier > 0 && calc.psMeuble > 0) ...[
             _Row(
-              label: 'Prélèvements sociaux fonciers 17,2 %',
+              label: 'Prélèvements sociaux fonciers '
+                  '${_pctPS(BaremeIR2026.tauxPSFoncierPour(calc.annee))}',
               value: money.format(calc.psFoncier),
             ),
             _Row(
-              label: 'Prélèvements sociaux meublé 18,6 %',
+              label: 'Prélèvements sociaux meublé '
+                  '${_pctPS(BaremeIR2026.tauxPSMeublePour(calc.annee))}',
               value: money.format(calc.psMeuble),
             ),
           ] else if (calc.psMeuble > 0)
             _Row(
-              label: 'Prélèvements sociaux 18,6 %',
+              label: 'Prélèvements sociaux '
+                  '${_pctPS(BaremeIR2026.tauxPSMeublePour(calc.annee))}',
               value: money.format(calc.psMeuble),
             )
           else
             _Row(
-              label: 'Prélèvements sociaux 17,2 %',
+              label: 'Prélèvements sociaux '
+                  '${_pctPS(BaremeIR2026.tauxPSFoncierPour(calc.annee))}',
               value: money.format(calc.prelevementsSociaux),
             ),
           if (calc.deficitImputableGlobal > 0) ...[
@@ -867,7 +877,10 @@ class _BaremeFooter extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
       child: Text(
-        'Barème IR $annee · PS foncier 17,2 % · PS meublé 18,6 % · Plafond QF 1 759 €/demi-part',
+        'Barème IR $annee · '
+        'PS foncier ${_pctPS(BaremeIR2026.tauxPSFoncierPour(annee))} · '
+        'PS meublé ${_pctPS(BaremeIR2026.tauxPSMeublePour(annee))} · '
+        'Plafond QF ${NumberFormat.decimalPattern('fr_FR').format(BaremeIR2026.plafondQuotientFamilialDemiPart)} €/demi-part',
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 11,

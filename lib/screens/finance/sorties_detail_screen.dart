@@ -270,7 +270,11 @@ class _ImpotFoncierCard extends StatelessWidget {
                 _ImpotLine(
                   icon: Icons.percent_rounded,
                   label: 'Prélèvements sociaux',
-                  detail: 'CSG + CRDS · 17,2 % à 18,6 %',
+                  // PS sur les revenus de l'année concernée : meublé/LMNP à
+                  // 18,6 % dès 2025 (LFSS 2026), foncier à 17,2 %.
+                  detail: anneeRevenus >= 2025
+                      ? 'CSG + CRDS · 17,2 % (foncier) · 18,6 % (meublé)'
+                      : 'CSG + CRDS · 17,2 %',
                   value: prelevementsSociaux,
                   money: money,
                 ),
