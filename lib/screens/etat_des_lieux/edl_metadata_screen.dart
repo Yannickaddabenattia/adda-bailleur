@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../models/etat_des_lieux.dart';
 import '../../services/etat_des_lieux_service.dart';
 import '../../widgets/primary_button.dart';
 
@@ -25,12 +26,17 @@ class _EdlMetadataScreenState extends State<EdlMetadataScreen> {
   late TextEditingController _eauFroide;
   late TextEditingController _elecJour;
   late TextEditingController _elecNuit;
+  // B1/B2 — EDL de sortie : nouvelle adresse du locataire + date de l'EDL d'entrée.
+  late TextEditingController _nouvelleAdresse;
+  DateTime? _dateEntree;
+  bool _isSortie = false;
   bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    final edl = context.read<EtatDesLieuxService>().byId(widget.edlId);
+    final service = context.read<EtatDesLieuxService>();
+    final edl = service.byId(widget.edlId);
     _adresse = TextEditingController(text: edl?.bailleurAdresse ?? '');
     _cles = TextEditingController(
       text: edl?.nombreCles?.toString() ?? '',
@@ -44,6 +50,22 @@ class _EdlMetadataScreenState extends State<EdlMetadataScreen> {
         TextEditingController(text: edl?.releveCompteurElecJour ?? '');
     _elecNuit =
         TextEditingController(text: edl?.releveCompteurElecNuit ?? '');
+    _isSortie = edl?.type == EtatDesLieuxType.sortie;
+    _nouvelleAdresse =
+        TextEditingController(text: edl?.nouvelleAdresseLocataire ?? '');
+    _dateEntree = edl?.dateEtatEntree;
+    // Auto-suggestion : reprend la date de l'EDL d'entrée du même logement/
+    // locataire si elle n'a pas encore été saisie.
+    if (_isSortie && _dateEntree == null && edl != null) {
+      final entrees = service
+          .byLogement(edl.logementId)
+          .where((e) =>
+              e.locataireId == edl.locataireId &&
+              e.type == EtatDesLieuxType.entree)
+          .toList()
+        ..sort((a, b) => b.date.compareTo(a.date));
+      if (entrees.isNotEmpty) _dateEntree = entrees.first.date;
+    }
   }
 
   @override
@@ -55,8 +77,22 @@ class _EdlMetadataScreenState extends State<EdlMetadataScreen> {
     _eauFroide.dispose();
     _elecJour.dispose();
     _elecNuit.dispose();
+    _nouvelleAdresse.dispose();
     super.dispose();
   }
+
+  Future<void> _pickDateEntree() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateEntree ?? DateTime.now(),
+      firstDate: DateTime(DateTime.now().year - 20),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _dateEntree = picked);
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   String? _normString(TextEditingController c) {
     final v = c.text.trim();
@@ -80,6 +116,9 @@ class _EdlMetadataScreenState extends State<EdlMetadataScreen> {
     edl.releveCompteurEauFroide = _normString(_eauFroide);
     edl.releveCompteurElecJour = _normString(_elecJour);
     edl.releveCompteurElecNuit = _normString(_elecNuit);
+    edl.nouvelleAdresseLocataire =
+        _isSortie ? _normString(_nouvelleAdresse) : null;
+    edl.dateEtatEntree = _isSortie ? _dateEntree : null;
     await service.save(edl);
     if (mounted) Navigator.of(context).pop();
   }
@@ -113,6 +152,42 @@ class _EdlMetadataScreenState extends State<EdlMetadataScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              if (_isSortie) ...[
+                const _Section(label: 'ÉTAT DES LIEUX DE SORTIE'),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _nouvelleAdresse,
+                  readOnly: readOnly,
+                  maxLines: 2,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Nouvelle adresse du locataire',
+                    hintText:
+                        'Domicile ou lieu d\'hébergement après le départ',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: readOnly ? null : _pickDateEntree,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Date de l\'état des lieux d\'entrée',
+                      suffixIcon: (_dateEntree == null || readOnly)
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () =>
+                                  setState(() => _dateEntree = null),
+                            ),
+                    ),
+                    child: Text(_dateEntree == null
+                        ? 'Non renseignée'
+                        : _fmtDate(_dateEntree!)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
               const _Section(label: 'CLÉS REMISES'),
               const SizedBox(height: 8),
               TextFormField(

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../core/storage/local_database.dart';
+import '../models/country.dart';
 import '../models/depense.dart';
 import '../models/fiscal_settings.dart';
 import '../models/logement.dart';
@@ -104,6 +105,8 @@ class BaremeIR2026 {
         (double.infinity, 0.45)],
     2024: [(11497, 0.00), (29315, 0.11), (83823, 0.30), (180294, 0.41),
         (double.infinity, 0.45)],
+    // 📚 LF pour 2026 art. 4 (promulguée 19/02/2026, +0,9 %) ; BOFiP
+    // BOI-IR-LIQ-20-10 §40. Millésime 2026 = revenus 2025.
     2025: [(11600, 0.00), (29579, 0.11), (84577, 0.30), (181917, 0.41),
         (double.infinity, 0.45)],
   };
@@ -124,9 +127,14 @@ class BaremeIR2026 {
   static List<int> get anneesDisponibles =>
       _baremes.keys.toList()..sort();
 
-  /// Barème PS pour revenus fonciers (location nue) + plus-values immo
-  /// particuliers. LFSS 2026 : maintien à 17,2 %.
-  /// Clé = année des revenus.
+  /// Barème PS pour revenus fonciers (location nue) + plus-values immobilières
+  /// des particuliers.
+  /// 📚 LFSS 2026 = **loi n° 2025-1403 du 30/12/2025** (JORFTEXT000053226384),
+  /// art. **L. 136-8, IV CSS** : dérogation maintenant la CSG à 9,2 % (PS
+  /// **17,2 %**) pour les revenus fonciers et les plus-values immobilières,
+  /// malgré la hausse CSG 9,2 %→10,6 %. Clé = ANNÉE DES REVENUS.
+  /// ⚠️ La **CSG DÉDUCTIBLE reste à 6,8 %** (non modélisée par l'app ; si elle
+  /// est ajoutée un jour, NE PAS la passer à 8,2 %).
   static const Map<int, PrelevementsSociaux> _psFoncier = {
     2018: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
     2019: PrelevementsSociaux(csg: 0.092, crds: 0.005, solidarite: 0.075),
@@ -196,9 +204,18 @@ class BaremeIR2026 {
   /// Alias rétro-compatible : tranches du dernier millésime disponible.
   static List<(double, double)> get tranches => tranchesPour(annee);
 
-  /// Plafond de l'avantage du quotient familial : ~1 790 € par demi-part
-  /// supplémentaire (LF 2026 art. 4).
-  static const double plafondQuotientFamilialDemiPart = 1790;
+  /// Plafond de l'avantage du quotient familial, **par demi-part
+  /// supplémentaire et par ANNÉE DE REVENUS** (art. 197 CGI).
+  /// 📚 LF pour 2026 art. 4 (+0,9 %) ; BOFiP BOI-IR-LIQ-20-10 §40 (07/04/2026).
+  static const Map<int, double> plafondDemiPartQF = {
+    2023: 1759, // ✅
+    2024: 1791, // ✅ (l'ancienne constante 1790 portait 1 € d'erreur)
+    2025: 1807, // ✅ revenus 2025, déclarés en 2026
+  };
+
+  /// Plafond QF pour l'[year] des revenus ; à défaut, dernier millésime connu.
+  static double plafondQFPour(int year) =>
+      plafondDemiPartQF[year] ?? plafondDemiPartQF[2025]!;
 
   /// Décote pour foyers modestes (2026, valeurs indicatives à confirmer).
   static const double decoteCelibataire = 897;
@@ -207,11 +224,34 @@ class BaremeIR2026 {
 
 
   /// Plafond du déficit foncier imputable sur le revenu global.
+  /// 📚 CGI art. 156, I-3°.
   static const double plafondDeficitImputableGlobal = 10700;
 
-  /// Plafond doublé pour travaux de rénovation énergétique (DPE E/F/G → A/B/C/D).
-  /// Dispositif prorogé jusqu'au 31/12/2027.
+  /// Plafond doublé (rénovation énergétique : DPE E/F/G → A/B/C/D).
+  /// 📚 CGI art. 156, I-3° ; décret n° 2023-297 du 21/04/2023 (annexe III
+  /// art. 41 DO). Dépenses payées du **01/01/2023 au 31/12/2025** (devis
+  /// accepté dès le 05/11/2022).
+  /// ⚠️ Une prorogation jusqu'au 31/12/2027 (LF 2026) est rapportée par des
+  /// sources secondaires : **NON codée** tant que non confirmée sur Légifrance.
   static const double plafondDeficitRenovationEnergetique = 21400;
+
+  /// Bornes de la fenêtre du plafond majoré (paramètre modifiable).
+  static const int anneeDebutDeficitMajore = 2023;
+  static final DateTime dateFinPlafondMajore = DateTime(2025, 12, 31);
+
+  /// Plafond de déficit foncier imputable pour l'[year] : majoré (21 400 €) si
+  /// rénovation énergétique en cours ET année dans la fenêtre 2023-2025, sinon
+  /// standard (10 700 €).
+  static double plafondDeficitImputable(
+    int year, {
+    required bool renovationEnergetique,
+  }) {
+    final dansFenetre = year >= anneeDebutDeficitMajore &&
+        year <= dateFinPlafondMajore.year;
+    return (renovationEnergetique && dansFenetre)
+        ? plafondDeficitRenovationEnergetique
+        : plafondDeficitImputableGlobal;
+  }
 
   /// Plafond global des niches fiscales (par foyer, par an).
   static const double plafondGlobalNichesFiscales = 10000;
@@ -227,25 +267,35 @@ class BaremeIR2026 {
   static const double seuilMicroBIC = 77700;
   static const double abattementMicroBIC = 0.50;
 
-  /// Micro-BIC meublé de tourisme CLASSÉ (Gîtes de France, chambres d'hôtes…).
-  static const double seuilMicroBICTourismeClasse = 77700;
-  static const double abattementMicroBICTourismeClasse = 0.71;
+  /// Micro-BIC meublé de **tourisme CLASSÉ** (+ chambres d'hôtes), **par année
+  /// de revenus**.
+  /// 📚 loi n° 2024-1039 du 19/11/2024 (« Le Meur »), art. 50-0 CGI :
+  /// revenus ≤ 2024 → abattement 71 %, plafond 188 700 € ; revenus ≥ 2025 →
+  /// abattement 50 %, plafond 77 700 €.
+  static double abattementMicroBICTourismeClasse(int year) =>
+      year <= 2024 ? 0.71 : 0.50;
+  static double seuilMicroBICTourismeClasse(int year) =>
+      year <= 2024 ? 188700 : 77700;
 
-  /// Micro-BIC meublé de tourisme NON classé (Airbnb non classé).
-  /// Durci par PLF 2026 : abattement 30 %, plafond 15 000 €.
-  static const double seuilMicroBICTourismeNonClasse = 15000;
-  static const double abattementMicroBICTourismeNonClasse = 0.30;
+  /// Micro-BIC meublé de **tourisme NON classé**, **par année de revenus**.
+  /// 📚 loi n° 2024-1039 du 19/11/2024 : revenus ≤ 2024 → abattement 50 %,
+  /// plafond 77 700 € ; revenus ≥ 2025 → abattement 30 %, plafond 15 000 €.
+  static double abattementMicroBICTourismeNonClasse(int year) =>
+      year <= 2024 ? 0.50 : 0.30;
+  static double seuilMicroBICTourismeNonClasse(int year) =>
+      year <= 2024 ? 77700 : 15000;
 
   /// Plancher d'imposition micro-BIC : si recettes après abattement < 305 € → 0.
+  /// 📚 art. 50-0 CGI (inchangé par la loi Le Meur).
   static const double plancherMicroBIC = 305;
 
   /// Seuil de LMP (cumulatif avec dépassement des autres revenus pro).
   static const double seuilRecettesLMP = 23000;
 
-  /// Taux IS 2026 — PME éligibles (CA < 10 M€).
-  static const double tauxISReduit = 0.15;
-  static const double seuilISTauxReduit = 42500;
-  static const double tauxISNormal = 0.25;
+  // IS (SCI à l'IS) : **source unique = `BaremeIS2026`** (sci_service.dart).
+  // 📚 art. 219 CGI — taux réduit 15 % jusqu'à 42 500 € (PME : CA < 10 M€,
+  // capital entièrement libéré, détenu ≥ 75 % par des personnes physiques) ;
+  // 25 % au-delà. Les constantes IS dupliquées ici ont été supprimées.
 
   /// Taux Loc'Avantages 2026 (sans intermédiation locative).
   /// IL = intermédiation locative (organisme agréé) → majoration.
@@ -611,6 +661,14 @@ class FiscaliteService extends ChangeNotifier {
         _depenseService = depenseService,
         _creditService = creditService;
 
+  /// Biens situés en **France** : la fiscalité française (foncier, micro, LMNP,
+  /// LMP, Pinel, Loc'Avantages…) ne s'applique qu'à eux. Les biens BE/CH ont
+  /// leur propre estimation par bien (`ForeignFiscaliteScreen`). Les données
+  /// françaises existantes ont `country == france` par défaut → périmètre
+  /// strictement inchangé.
+  Iterable<Logement> get _logementsFrance =>
+      _logementService.all.where((l) => l.country == Country.france);
+
   // ---- Settings ----
 
   FiscalSettings get settings {
@@ -742,11 +800,11 @@ class FiscaliteService extends ChangeNotifier {
   /// Hors périmètre : Monuments historiques, Malraux, loi 1948 (forcent le
   /// réel) — non gérés ici.
   bool eligibleMicroFoncier(int year) {
-    final scis = _logementService.all
+    final scis = _logementsFrance
         .where((l) => l.statutFiscal == StatutFiscal.sci)
         .toList();
     if (scis.isNotEmpty) return false;
-    final nus = _logementService.all
+    final nus = _logementsFrance
         .where((l) => l.statutFiscal == StatutFiscal.locationNue)
         .toList();
     if (nus.isEmpty) return false;
@@ -786,7 +844,7 @@ class FiscaliteService extends ChangeNotifier {
     // fiscalement transparente, chaque associé déclare sa quote-part comme
     // un revenu foncier classique. Les SCI à l'IS sont exclues : leur IS
     // est calculé séparément par SCIService.
-    final logementsNus = _logementService.all.where((l) {
+    final logementsNus = _logementsFrance.where((l) {
       if (l.statutFiscal == StatutFiscal.locationNue) return true;
       if (l.statutFiscal == StatutFiscal.sci) {
         final sci = LocalDatabase.scisBox.get(l.sciId);
@@ -797,13 +855,13 @@ class FiscaliteService extends ChangeNotifier {
       return false;
     }).toList();
     // LMNP + Viager LMNP : régime BIC non pro (charges sociales = PS).
-    final logementsLmnp = _logementService.all
+    final logementsLmnp = _logementsFrance
         .where((l) =>
             l.statutFiscal == StatutFiscal.lmnp ||
             l.statutFiscal == StatutFiscal.viagerLmnp)
         .toList();
     // LMP : régime BIC pro (charges sociales = cotisations SSI).
-    final logementsLmp = _logementService.all
+    final logementsLmp = _logementsFrance
         .where((l) => l.statutFiscal == StatutFiscal.lmp)
         .toList();
 
@@ -875,9 +933,10 @@ class FiscaliteService extends ChangeNotifier {
           // en rénovation énergétique cette année.
           final renoEnergetique = logementsNus
               .any((l) => l.enRenovationEnergetique);
-          final plafond = renoEnergetique
-              ? BaremeIR2026.plafondDeficitRenovationEnergetique
-              : BaremeIR2026.plafondDeficitImputableGlobal;
+          final plafond = BaremeIR2026.plafondDeficitImputable(
+            year,
+            renovationEnergetique: renoEnergetique,
+          );
           final imputable = math.min(partNonInterets, plafond);
           deficitImputableGlobal = imputable;
           deficitReportableFoncier =
@@ -992,7 +1051,7 @@ class FiscaliteService extends ChangeNotifier {
     final reductions = <ReductionDispositif>[];
     var reductionBrute = 0.0;
     if (regimeNu == RegimeFiscal.reel) {
-      for (final l in _logementService.all) {
+      for (final l in _logementsFrance) {
         final r = reductionPourLogement(l, year);
         if (r != null) {
           reductions.add(r);
@@ -1005,7 +1064,7 @@ class FiscaliteService extends ChangeNotifier {
     // Applicable au régime réel foncier, cumulable avec la déduction des
     // charges. La réduction s'impute sur l'IR (additionnel foncier).
     if (regimeNu == RegimeFiscal.reel) {
-      for (final l in _logementService.all) {
+      for (final l in _logementsFrance) {
         final taux = BaremeIR2026.tauxLocAvantages(l.dispositif);
         if (taux == 0) continue;
         if (!l.dispositifActifPour(year)) continue;
@@ -1075,12 +1134,12 @@ class FiscaliteService extends ChangeNotifier {
         final imposable = recettes * (1 - BaremeIR2026.abattementMicroBIC);
         return imposable < BaremeIR2026.plancherMicroBIC ? 0 : imposable;
       case RegimeLmnp.tourismeClasse:
-        final imposable =
-            recettes * (1 - BaremeIR2026.abattementMicroBICTourismeClasse);
+        final imposable = recettes *
+            (1 - BaremeIR2026.abattementMicroBICTourismeClasse(year));
         return imposable < BaremeIR2026.plancherMicroBIC ? 0 : imposable;
       case RegimeLmnp.tourismeNonClasse:
-        final imposable =
-            recettes * (1 - BaremeIR2026.abattementMicroBICTourismeNonClasse);
+        final imposable = recettes *
+            (1 - BaremeIR2026.abattementMicroBICTourismeNonClasse(year));
         return imposable < BaremeIR2026.plancherMicroBIC ? 0 : imposable;
       case RegimeLmnp.reelBIC:
         final charges = chargesDeductiblesLogement(l.id, year);
@@ -1137,10 +1196,9 @@ class FiscaliteService extends ChangeNotifier {
         BaremeIR2026.impotPourUnePart(assiette / partsRef, year: year) *
             partsRef;
 
-    // Avantage du QF plafonné : ~1 790 €/demi-part en 2025.
+    // Avantage du QF plafonné, par demi-part et par année (art. 197 CGI).
     final demiPartsSupp = partsSupp * 2;
-    final plafondAvantage =
-        demiPartsSupp * BaremeIR2026.plafondQuotientFamilialDemiPart;
+    final plafondAvantage = demiPartsSupp * BaremeIR2026.plafondQFPour(year);
 
     final avantageReel = irRef - irAvecQf;
 

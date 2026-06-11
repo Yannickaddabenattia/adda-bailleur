@@ -83,6 +83,12 @@ class EtatDesLieux {
   String? releveCompteurEauFroide;
   String? releveCompteurElecJour;
   String? releveCompteurElecNuit;
+  // Champs ajoutés (B1/B2) — EDL de sortie conforme au décret n° 2016-382.
+  /// Nouvelle adresse / lieu d'hébergement du locataire (EDL de sortie). Index 23.
+  String? nouvelleAdresseLocataire;
+  /// Date de réalisation de l'état des lieux d'entrée, rappelée sur l'EDL de
+  /// sortie. Index 24.
+  DateTime? dateEtatEntree;
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -108,6 +114,8 @@ class EtatDesLieux {
     this.releveCompteurEauFroide,
     this.releveCompteurElecJour,
     this.releveCompteurElecNuit,
+    this.nouvelleAdresseLocataire,
+    this.dateEtatEntree,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -236,6 +244,14 @@ class EtatDesLieux {
         releveCompteurElecNuit!.trim().isNotEmpty) {
       parts.add('elecNuit=${releveCompteurElecNuit!.trim()}');
     }
+    // B1/B2 — inclus uniquement si renseignés (compat hash des EDL antérieurs).
+    if (nouvelleAdresseLocataire != null &&
+        nouvelleAdresseLocataire!.trim().isNotEmpty) {
+      parts.add('nouvelleAdresseLocataire=${nouvelleAdresseLocataire!.trim()}');
+    }
+    if (dateEtatEntree != null) {
+      parts.add('dateEtatEntree=${dateEtatEntree!.toUtc().toIso8601String()}');
+    }
   }
 
   String get titre {
@@ -283,13 +299,17 @@ class EtatDesLieuxAdapter extends TypeAdapter<EtatDesLieux> {
       releveCompteurEauFroide: fields[20] as String?,
       releveCompteurElecJour: fields[21] as String?,
       releveCompteurElecNuit: fields[22] as String?,
+      nouvelleAdresseLocataire: fields[23] as String?,
+      dateEtatEntree: fields[24] == null
+          ? null
+          : DateTime.parse(fields[24] as String),
     );
   }
 
   @override
   void write(BinaryWriter writer, EtatDesLieux obj) {
     writer
-      ..writeByte(23)
+      ..writeByte(25)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -335,6 +355,10 @@ class EtatDesLieuxAdapter extends TypeAdapter<EtatDesLieux> {
       ..writeByte(21)
       ..write(obj.releveCompteurElecJour)
       ..writeByte(22)
-      ..write(obj.releveCompteurElecNuit);
+      ..write(obj.releveCompteurElecNuit)
+      ..writeByte(23)
+      ..write(obj.nouvelleAdresseLocataire)
+      ..writeByte(24)
+      ..write(obj.dateEtatEntree?.toIso8601String());
   }
 }

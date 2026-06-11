@@ -13,6 +13,26 @@ class LoyerEffectif {
 }
 
 class RevisionLoyerService extends ChangeNotifier {
+  /// **Gel des loyers des passoires énergétiques.**
+  /// 📚 loi n° 2021-1104 du 22/08/2021 (Climat et Résilience), art. L. 173-1-1
+  /// CCH. Depuis le **24/08/2022**, aucune hausse de loyer (révision IRL ni
+  /// relocation) pour un logement classé **F ou G**.
+  ///
+  /// Retourne un message **bloquant** si la révision est interdite, sinon
+  /// `null`. Classe `null` (inconnue) → pas de blocage ici ; l'UI doit avertir
+  /// séparément (cf. [dpeInconnu]).
+  static String? gelRevisionError(DpeClasse? dpeClasse) {
+    if (dpeClasse != null && dpeClasse.estPassoire) {
+      return 'Révision de loyer interdite : logement classé ${dpeClasse.label} '
+          '(passoire énergétique). Gel des loyers depuis le 24/08/2022 — '
+          'loi n° 2021-1104 (Climat et Résilience), art. L. 173-1-1 CCH.';
+    }
+    return null;
+  }
+
+  /// `true` si la classe DPE est inconnue → l'UI doit avertir avant de réviser.
+  static bool dpeInconnu(DpeClasse? dpeClasse) => dpeClasse == null;
+
   /// Toutes les révisions, triées de la plus récente à la plus ancienne
   /// (par date d'effet).
   List<RevisionLoyer> get all {

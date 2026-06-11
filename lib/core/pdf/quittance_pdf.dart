@@ -110,7 +110,10 @@ class QuittancePdfBuilder {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(
-              'Quittance de loyer',
+              // C3 : paiement partiel → « Reçu », jamais « Quittance ».
+              q.restantDuPeriode > 0.01
+                  ? 'Reçu de paiement partiel'
+                  : 'Quittance de loyer',
               style: pw.TextStyle(
                 fontSize: 22,
                 fontWeight: pw.FontWeight.bold,
@@ -412,10 +415,12 @@ class QuittancePdfBuilder {
           ),
           pw.SizedBox(height: 8),
           pw.Text(
-            'Cette quittance annule tous les autres reçus qui auraient pu '
-            'être établis précédemment en cas de paiement partiel du montant '
-            'du présent terme. Elle est à conserver pendant trois ans par le '
-            'locataire (article 7-1 de la loi du 6 juillet 1989).',
+            'Document délivré gratuitement, à la demande du locataire '
+            '(article 21 de la loi du 6 juillet 1989). Sa transmission par voie '
+            'dématérialisée requiert l\'accord exprès du locataire. En cas de '
+            'paiement partiel, le présent document vaut reçu et non quittance. '
+            'À conserver pendant trois ans par le locataire (article 7-1 de la '
+            'loi du 6 juillet 1989).',
             style: pw.TextStyle(
               fontSize: 9,
               fontStyle: pw.FontStyle.italic,

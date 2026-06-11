@@ -14,6 +14,7 @@ import 'quittance_service.dart';
 /// au taux réduit (CA < 10 M€, capital intégralement libéré et détenu à
 /// 75 % par personnes physiques) — ce qui couvre la quasi-totalité des
 /// SCI à l'IS.
+/// 📚 Source unique de l'IS dans l'app — art. 219 CGI.
 class BaremeIS2026 {
   /// Taux réduit appliqué jusqu'à 42 500 € de bénéfice.
   static const double tauxReduit = 0.15;

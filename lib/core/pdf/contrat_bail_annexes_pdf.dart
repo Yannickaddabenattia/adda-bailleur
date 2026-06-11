@@ -12,6 +12,7 @@ import '../../models/diagnostic.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
 import '../../models/user_profile.dart';
+import '../legal/france_bail_rules.dart';
 
 /// Génère le PDF des **annexes obligatoires** au contrat de bail, conformes
 /// à la loi du 6 juillet 1989, à la loi ALUR (2014), à la loi ELAN (2018)
@@ -43,6 +44,17 @@ class ContratBailAnnexesPdfBuilder {
     return (regular: regular, bold: bold, italic: italic);
   }
 
+  /// Charge le **texte officiel intégral** de la notice d'information (asset),
+  /// en retirant l'en-tête de provenance (commentaire HTML). Reproduit
+  /// verbatim, jamais résumé.
+  /// 📚 Arrêté du 29/05/2015 (NOR ETLL1511666A) consolidé au 16/02/2023 ;
+  /// art. 3 de la loi n° 89-462. URL : JORFTEXT000047318946.
+  static Future<String> loadNoticeOfficielle() async {
+    final raw =
+        await rootBundle.loadString('assets/legal/fr/notice_information.md');
+    return raw.replaceFirst(RegExp(r'<!--.*?-->', dotAll: true), '').trim();
+  }
+
   static Future<pw.Document> build({
     required ContratBail bail,
     required UserProfile bailleur,
@@ -60,6 +72,9 @@ class ContratBailAnnexesPdfBuilder {
     final fontRegular = pw.Font.ttf(fonts.regular);
     final fontBold = pw.Font.ttf(fonts.bold);
     final fontItalic = pw.Font.ttf(fonts.italic);
+
+    // Texte officiel intégral de la notice (asset Légifrance) — annexe C.
+    final noticeOfficielle = await loadNoticeOfficielle();
 
     final doc = pw.Document(
       title: 'Annexes - ${bail.reference}',
@@ -234,58 +249,17 @@ class ContratBailAnnexesPdfBuilder {
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(36, 36, 36, 36),
         build: (ctx) => [
-          section('Annexe 1 - Notice d\'information', [
+          section('Annexe C - Notice d\'information (texte officiel)', [
             legalRef(
-                'Décret n. 2015-587 du 29 mai 2015 - Article 3 de la loi n. 89-462 du 6 juillet 1989'),
-            paragraph(
-              'Cette notice résume les droits et obligations principaux du '
-              'bailleur et du locataire dans le cadre d\'une location à usage de '
-              'résidence principale. Elle est remise au locataire à la signature '
-              'du bail.',
-            ),
-            label('Droits du locataire'),
-            bullet(
-                'Jouir paisiblement du logement et bénéficier d\'un logement décent (décret du 30/01/2002).'),
-            bullet(
-                'Obtenir du bailleur un état des lieux d\'entrée et de sortie, joints au contrat.'),
-            bullet(
-                'Donner congé à tout moment, par lettre recommandée AR, acte de commissaire de justice ou remise en main propre contre récépissé.'),
-            bullet(
-                'Demander la réalisation des réparations à la charge du bailleur (réparations autres que locatives).'),
-            bullet(
-                'Bénéficier du dépôt de garantie restitué dans les 1 à 2 mois suivant la sortie (art. 22).'),
-            label('Obligations du locataire'),
-            bullet(
-                'Payer le loyer et les charges aux échéances convenues (art. 7 a).'),
-            bullet(
-                'Souscrire et maintenir une assurance habitation couvrant les risques locatifs (art. 7 g).'),
-            bullet(
-                'Entretenir le logement et effectuer les menues réparations et l\'entretien courant (décret 26/08/1987).'),
-            bullet(
-                'Ne pas transformer le logement sans accord écrit du bailleur (art. 7 f).'),
-            bullet(
-                'Permettre l\'accès au logement pour préparer la relocation ou réaliser les travaux nécessaires (art. 7 e).'),
-            label('Droits du bailleur'),
-            bullet(
-                'Encaisser le loyer et les charges récupérables.'),
-            bullet(
-                'Donner congé pour vendre, reprendre le logement ou pour motif légitime et sérieux, dans le préavis légal (6 mois bail vide, 3 mois bail meublé).'),
-            bullet(
-                'Réviser le loyer annuellement selon l\'IRL si la clause est prévue au bail.'),
-            bullet(
-                'Conserver le dépôt de garantie en cas de manquement du locataire (loyers impayés, dégradations).'),
-            label('Obligations du bailleur'),
-            bullet(
-                'Délivrer un logement décent, en bon état d\'usage et conforme à sa destination.'),
-            bullet(
-                'Entretenir les locaux en état de servir et faire toutes les réparations autres que locatives (art. 6).'),
-            bullet(
-                'Assurer au locataire la jouissance paisible du logement.'),
-            bullet(
-                'Remettre une quittance de loyer sur demande du locataire et gratuitement (art. 21).'),
-            bullet(
-                'Communiquer le DDT (Dossier de Diagnostic Technique) et la présente notice à la signature.'),
+                'Arrêté du 29 mai 2015 (NOR ETLL1511666A) consolidé au 16/02/2023 - art. 3 de la loi n. 89-462 du 6 juillet 1989'),
           ]),
+          // Reproduction VERBATIM du texte officiel (asset), ligne à ligne —
+          // chaque ligne en item top-level du MultiPage (pagination auto).
+          for (final ligne in noticeOfficielle
+              .split('\n')
+              .map((l) => l.trim())
+              .where((l) => l.isNotEmpty))
+            paragraph(ligne),
         ],
       ),
     );
@@ -532,41 +506,45 @@ class ContratBailAnnexesPdfBuilder {
         build: (ctx) => [
           section('Annexe 6 - Acte de cautionnement (le cas échéant)', [
             legalRef(
-                'Article 22-1 de la loi n. 89-462 du 6 juillet 1989 - Articles 2288 et suivants du Code civil'),
+                'Article 22-1 de la loi n. 89-462 du 6 juillet 1989 (version en vigueur au 01/01/2022, ordonnance n. 2021-1192 du 15/09/2021) - Article 2297 du Code civil. Formalités prescrites à peine de nullité.'),
             paragraph(
               'Cette annexe ne s\'applique que si une personne physique se '
-              'porte caution pour le locataire. La loi ELAN du 23 novembre 2018 '
-              'autorise depuis 2022 la signature électronique de l\'acte de '
-              'cautionnement, sans mention manuscrite obligatoire.',
+              'porte caution pour le locataire. L\'acte peut être établi sur '
+              'support papier ou électronique.',
             ),
-            label('Modèle - Engagement de caution'),
+            // E1 - Loyer et conditions de révision, repris du bail.
+            label('Éléments du bail garanti'),
             paragraph(
-              'Je soussigné(e) __________________________________________________, '
-              'né(e) le _____/_____/__________ à __________________________, '
-              'demeurant ________________________________________________________, '
-              'me porte caution solidaire de Monsieur/Madame ____________________ '
-              '(le locataire), pour l\'exécution du bail signé en date du '
-              '${dateFmt.format(bail.dateDebut)} portant sur le logement situé '
-              '${bail.adresseLogement}.',
+              'Logement : ${bail.adresseLogement}. Bail conclu le '
+              '${dateFmt.format(bail.dateDebut)}. Loyer : '
+              '${bail.loyerHC.toStringAsFixed(2)} € hors charges + '
+              '${bail.charges.toStringAsFixed(2)} € de charges. Révision : '
+              '${bail.revisionAnnuelleIRL ? "annuelle selon l'IRL (INSEE), au trimestre de référence indiqué au bail" : "non prévue"}.',
             ),
-            pw.SizedBox(height: 4),
+            // E2 - Reproduction VERBATIM de l'avant-dernier alinéa de l'art. 22-1
+            // (loi n° 89-462, version en vigueur au 01/01/2022, ord. n° 2021-1192
+            // du 15/09/2021 - texte officiel Légifrance, non paraphrasé).
+            label('Faculté de résiliation (avant-dernier alinéa de l\'art. 22-1)'),
+            paragraph(FranceBailRules.cautionResiliationAlinea),
+            // E3 - ZONE VIDE : mention apposée PAR la caution (art. 2297 C. civ.).
+            // Consigne verbatim au-dessus, rien de pré-rempli dans la zone.
+            label(FranceBailRules.cautionMentionTitre),
+            paragraph(FranceBailRules.cautionMention2297),
+            pw.Container(
+              height: 90,
+              width: double.infinity,
+              margin: const pw.EdgeInsets.symmetric(vertical: 6),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(width: 0.8),
+              ),
+            ),
+            // E4 - Remise d'un exemplaire du bail à la caution.
             paragraph(
-              'Je m\'engage à payer au bailleur les sommes dues par le locataire '
-              'au titre du loyer, des charges, des réparations locatives, des '
-              'éventuelles indemnités d\'occupation et de toutes sommes pouvant '
-              'être dues en exécution du bail.',
+              '[ ]  Un exemplaire du contrat de location a été remis à la '
+              'caution le ____ / ____ / ________.',
             ),
-            paragraph(
-              'Mon engagement couvre la durée du bail et son éventuel renouvellement, '
-              'dans la limite de _____ années à compter de la date du bail. Il ne '
-              'pourra excéder un montant total cumulé de ______________________ €.',
-            ),
-            paragraph(
-              'J\'ai pris connaissance de l\'étendue de mon engagement et des '
-              'conséquences d\'une éventuelle défaillance du locataire.',
-            ),
-            pw.SizedBox(height: 16),
-            signatureLine('Fait à __________________________, le _____ / _____ / __________'),
+            pw.SizedBox(height: 12),
+            signatureLine('Fait à __________________________, le ____ / ____ / ________'),
             pw.SizedBox(height: 6),
             signatureLine('Signature de la caution :'),
             pw.SizedBox(height: 6),

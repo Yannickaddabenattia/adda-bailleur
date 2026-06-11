@@ -265,6 +265,24 @@ class EtatDesLieuxPdfBuilder {
                 'Le présent document devient opposable après signature des deux parties.',
           ),
           pw.SizedBox(height: 18),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(8),
+            margin: const pw.EdgeInsets.only(bottom: 12),
+            decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5)),
+            child: pw.Text(
+              'Mentions légales (loi n°89-462, art. 3-2 ; décret n°2016-382 du '
+              '30/03/2016) : à l\'entrée, le locataire peut demander la '
+              'modification de l\'état des lieux dans les 10 jours (1er mois de '
+              'chauffe pour les éléments de chauffage). À la sortie, l\'usure '
+              'normale (vétusté, définie à l\'art. 4 du même décret) résultant '
+              'd\'un usage paisible ne peut être retenue sur le dépôt de '
+              'garantie ; une grille de vétusté issue d\'un accord collectif de '
+              'location peut être annexée au bail pour répartir les frais de '
+              'remise en état.',
+              style: const pw.TextStyle(fontSize: 8.5, lineSpacing: 2),
+            ),
+          ),
           if (edl.notes.trim().isNotEmpty) ...[
             _notesBox(edl.notes),
             pw.SizedBox(height: 14),
@@ -305,6 +323,20 @@ class EtatDesLieuxPdfBuilder {
         : bailleur.fullName.trim()[0].toUpperCase();
     final etablissementDate = dateFmt.format(DateTime.now());
     final isEntree = edl.type == EtatDesLieuxType.entree;
+    // B2 — EDL de sortie : nouveau domicile du locataire (EDL en priorité,
+    // sinon fiche locataire) + rappel de la date de l'EDL d'entrée.
+    final nouveauDomicile =
+        (edl.nouvelleAdresseLocataire?.trim().isNotEmpty ?? false)
+            ? edl.nouvelleAdresseLocataire!.trim()
+            : (locataire.nouvelleAdresse?.trim().isNotEmpty ?? false)
+                ? locataire.nouvelleAdresse!.trim()
+                : null;
+    final sortieLines = <String>[
+      if (edl.dateEtatEntree != null)
+        'État des lieux d\'entrée réalisé le ${dateFmt.format(edl.dateEtatEntree!)}',
+      if (nouveauDomicile != null)
+        'Nouveau domicile du locataire : $nouveauDomicile',
+    ];
 
     return pw.Container(
       width: double.infinity,
@@ -505,11 +537,20 @@ class EtatDesLieuxPdfBuilder {
             label: 'Le(s) locataire(s)',
             lines: [
               locataire.fullName,
+              if (locataire.adresse != null &&
+                  locataire.adresse!.trim().isNotEmpty)
+                locataire.adresse!.trim(),
               if (locataire.email.trim().isNotEmpty) locataire.email,
               if (locataire.phone != null && locataire.phone!.trim().isNotEmpty)
                 locataire.phone!.trim(),
             ],
           ),
+          if (!isEntree && sortieLines.isNotEmpty)
+            _coverRomanSection(
+              roman: 'iv.',
+              label: 'État des lieux de sortie',
+              lines: sortieLines,
+            ),
           pw.Spacer(),
 
           // Citation légale encadrée or

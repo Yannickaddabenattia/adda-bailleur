@@ -219,6 +219,51 @@ class ContratBail {
   // Bail saisonnier : charges incluses ?
   bool chargesIncluses;
 
+  /// **France** — le bailleur a souscrit une assurance loyers impayés (GLI).
+  /// Le cumul avec un cautionnement est interdit, sauf locataire étudiant ou
+  /// apprenti (loi n° 89-462, art. 22-1, al. 1er). Index Hive 61.
+  bool assuranceLoyersImpayes;
+
+  /// **France** — locataire étudiant ou apprenti : exception autorisant le
+  /// cumul GLI + cautionnement. Index Hive 62.
+  bool locataireEtudiantApprenti;
+
+  /// **France (A2)** — montant du dernier loyer acquitté par le précédent
+  /// locataire. À renseigner en relocation si le précédent locataire a quitté
+  /// le logement moins de 18 mois avant la signature (décret n° 2015-587,
+  /// contrat type). Index Hive 63.
+  double? precedentLoyerMontant;
+
+  /// **France (A2)** — date de versement du dernier loyer du précédent
+  /// locataire. Index Hive 64.
+  DateTime? precedentLoyerDateVersement;
+
+  /// **France (A2)** — date de la dernière révision du loyer du précédent
+  /// locataire. Index Hive 65.
+  DateTime? precedentLoyerDateRevision;
+
+  /// **France (A5)** — logement situé en zone d'encadrement des loyers
+  /// (commune appliquant l'expérimentation, loi ELAN art. 140 ; loi n° 89-462,
+  /// art. 25-9 / art. 140). Index Hive 66.
+  bool zoneEncadrementLoyers;
+
+  /// **France (A5)** — loyer de référence (€/m² de surface habitable) fixé par
+  /// arrêté préfectoral. Index Hive 67.
+  double? loyerReference;
+
+  /// **France (A5)** — loyer de référence majoré (€/m²) fixé par arrêté
+  /// préfectoral ; plafond du loyer hors complément. Index Hive 68.
+  double? loyerReferenceMajore;
+
+  /// **France (A5)** — complément de loyer (montant mensuel) au-delà du loyer
+  /// de référence majoré, justifié par des caractéristiques du logement.
+  /// Index Hive 69.
+  double? complementLoyer;
+
+  /// **France (A5)** — caractéristiques du logement justifiant le complément de
+  /// loyer (texte libre). Index Hive 70.
+  String? complementLoyerJustification;
+
   // Bail mobilité : justificatif (texte libre).
   String? justificatifMobilite;
 
@@ -331,6 +376,16 @@ class ContratBail {
     this.clauseSolidariteColo = true,
     Map<String, bool>? equipementsMeuble,
     this.chargesIncluses = false,
+    this.assuranceLoyersImpayes = false,
+    this.locataireEtudiantApprenti = false,
+    this.precedentLoyerMontant,
+    this.precedentLoyerDateVersement,
+    this.precedentLoyerDateRevision,
+    this.zoneEncadrementLoyers = false,
+    this.loyerReference,
+    this.loyerReferenceMajore,
+    this.complementLoyer,
+    this.complementLoyerJustification,
     this.justificatifMobilite,
     this.signatureBailleurPng,
     this.signatureBailleurAt,
@@ -628,6 +683,18 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
       templateAppliqueLe: f[60] is String
           ? DateTime.parse(f[60] as String)
           : null,
+      assuranceLoyersImpayes: (f[61] as bool?) ?? false,
+      locataireEtudiantApprenti: (f[62] as bool?) ?? false,
+      precedentLoyerMontant: (f[63] as num?)?.toDouble(),
+      precedentLoyerDateVersement:
+          f[64] is String ? DateTime.parse(f[64] as String) : null,
+      precedentLoyerDateRevision:
+          f[65] is String ? DateTime.parse(f[65] as String) : null,
+      zoneEncadrementLoyers: (f[66] as bool?) ?? false,
+      loyerReference: (f[67] as num?)?.toDouble(),
+      loyerReferenceMajore: (f[68] as num?)?.toDouble(),
+      complementLoyer: (f[69] as num?)?.toDouble(),
+      complementLoyerJustification: f[70] as String?,
       createdAt: DateTime.parse(f[42] as String),
       updatedAt: DateTime.parse(f[43] as String),
     );
@@ -636,7 +703,7 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
   @override
   void write(BinaryWriter writer, ContratBail obj) {
     writer
-      ..writeByte(61)
+      ..writeByte(71)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -758,6 +825,26 @@ class ContratBailAdapter extends TypeAdapter<ContratBail> {
       ..writeByte(59)
       ..write(obj.templateSourceId)
       ..writeByte(60)
-      ..write(obj.templateAppliqueLe?.toIso8601String());
+      ..write(obj.templateAppliqueLe?.toIso8601String())
+      ..writeByte(61)
+      ..write(obj.assuranceLoyersImpayes)
+      ..writeByte(62)
+      ..write(obj.locataireEtudiantApprenti)
+      ..writeByte(63)
+      ..write(obj.precedentLoyerMontant)
+      ..writeByte(64)
+      ..write(obj.precedentLoyerDateVersement?.toIso8601String())
+      ..writeByte(65)
+      ..write(obj.precedentLoyerDateRevision?.toIso8601String())
+      ..writeByte(66)
+      ..write(obj.zoneEncadrementLoyers)
+      ..writeByte(67)
+      ..write(obj.loyerReference)
+      ..writeByte(68)
+      ..write(obj.loyerReferenceMajore)
+      ..writeByte(69)
+      ..write(obj.complementLoyer)
+      ..writeByte(70)
+      ..write(obj.complementLoyerJustification);
   }
 }

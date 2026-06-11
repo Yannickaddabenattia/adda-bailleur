@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:signature/signature.dart';
 
 import '../../core/constants.dart';
+import '../../core/legal/france_bail_rules.dart';
 import '../../core/pdf/contrat_bail_annexes_pdf.dart';
 import '../../core/pdf/contrat_bail_pdf.dart';
 import '../../core/storage/local_database.dart';
@@ -326,6 +327,30 @@ class ContratBailDetailScreen extends StatelessWidget {
       await _showBailIncompletDialog(context, problemes);
       return;
     }
+    // Verrou décence énergétique : un logement classé G est interdit à la
+    // location pour les baux signés dès le 01/01/2025 (loi n° 2021-1104).
+    if (logement is Logement) {
+      final dpeErr =
+          FranceBailRules.bailDpeGError(logement.dpeClasse, bail.dateDebut);
+      if (dpeErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(dpeErr)));
+        return;
+      }
+    }
+    // E5 — blocage du cumul GLI + caution à la génération (sauf locataire
+    // étudiant/apprenti). 📚 loi n° 89-462, art. 22-1, al. 1er.
+    if (bail.garants.isNotEmpty) {
+      final gliErr = FranceBailRules.cautionGliError(
+        assuranceLoyersImpayes: bail.assuranceLoyersImpayes,
+        locataireEtudiantApprenti: bail.locataireEtudiantApprenti,
+      );
+      if (gliErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(gliErr)));
+        return;
+      }
+    }
     final bailleur =
         LocalDatabase.userBox.get(AppConstants.userProfileKey);
     if (bailleur == null) {
@@ -462,6 +487,30 @@ class ContratBailDetailScreen extends StatelessWidget {
     if (problemes.isNotEmpty) {
       await _showBailIncompletDialog(context, problemes);
       return;
+    }
+    // Verrou décence énergétique : un logement classé G est interdit à la
+    // location pour les baux signés dès le 01/01/2025 (loi n° 2021-1104).
+    if (logement is Logement) {
+      final dpeErr =
+          FranceBailRules.bailDpeGError(logement.dpeClasse, bail.dateDebut);
+      if (dpeErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(dpeErr)));
+        return;
+      }
+    }
+    // E5 — blocage du cumul GLI + caution à la génération (sauf locataire
+    // étudiant/apprenti). 📚 loi n° 89-462, art. 22-1, al. 1er.
+    if (bail.garants.isNotEmpty) {
+      final gliErr = FranceBailRules.cautionGliError(
+        assuranceLoyersImpayes: bail.assuranceLoyersImpayes,
+        locataireEtudiantApprenti: bail.locataireEtudiantApprenti,
+      );
+      if (gliErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(gliErr)));
+        return;
+      }
     }
     final bailleur =
         LocalDatabase.userBox.get(AppConstants.userProfileKey);

@@ -880,7 +880,7 @@ class _BaremeFooter extends StatelessWidget {
         'Barème IR $annee · '
         'PS foncier ${_pctPS(BaremeIR2026.tauxPSFoncierPour(annee))} · '
         'PS meublé ${_pctPS(BaremeIR2026.tauxPSMeublePour(annee))} · '
-        'Plafond QF ${NumberFormat.decimalPattern('fr_FR').format(BaremeIR2026.plafondQuotientFamilialDemiPart)} €/demi-part',
+        'Plafond QF ${NumberFormat.decimalPattern('fr_FR').format(BaremeIR2026.plafondQFPour(annee))} €/demi-part',
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 11,

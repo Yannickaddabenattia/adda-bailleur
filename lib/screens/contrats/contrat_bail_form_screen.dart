@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/legal/france_bail_rules.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/bail_template.dart';
 import '../../models/clause.dart';
@@ -62,6 +63,16 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
   late TextEditingController _bailleurRaisonSociale;
   late TextEditingController _bailleurSiret;
   late TextEditingController _bailleurRepresentant;
+  // A2 — relocation < 18 mois : loyer du précédent locataire.
+  late TextEditingController _precedentLoyer;
+  DateTime? _precedentVersement;
+  DateTime? _precedentRevision;
+  // A5 — encadrement des loyers (zones tendues).
+  bool _zoneEncadrement = false;
+  late TextEditingController _loyerRef;
+  late TextEditingController _loyerRefMajore;
+  late TextEditingController _complementLoyer;
+  late TextEditingController _complementJustif;
   bool _bailleurEstSociete = false;
   final List<Garant> _garants = [];
   final Set<String> _activeCatalogIds = {};
@@ -75,6 +86,10 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
   bool _animaux = false;
   bool _solidariteColo = true;
   bool _chargesIncluses = false;
+  // France — assurance loyers impayés (GLI) ; cumul avec caution interdit sauf
+  // locataire étudiant/apprenti (loi 89-462, art. 22-1, al. 1er).
+  bool _assuranceGli = false;
+  bool _locataireEtudiant = false;
   bool _attestationAssurance = false;
   bool _mentionEDL = false;
   bool _termeEchu = false;
@@ -144,6 +159,19 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     _bailleurSiret = TextEditingController(text: e?.bailleurSiret ?? '');
     _bailleurRepresentant =
         TextEditingController(text: e?.bailleurRepresentant ?? '');
+    _precedentLoyer = TextEditingController(
+        text: e?.precedentLoyerMontant?.toStringAsFixed(2) ?? '');
+    _precedentVersement = e?.precedentLoyerDateVersement;
+    _precedentRevision = e?.precedentLoyerDateRevision;
+    _zoneEncadrement = e?.zoneEncadrementLoyers ?? false;
+    _loyerRef = TextEditingController(
+        text: e?.loyerReference?.toStringAsFixed(2) ?? '');
+    _loyerRefMajore = TextEditingController(
+        text: e?.loyerReferenceMajore?.toStringAsFixed(2) ?? '');
+    _complementLoyer = TextEditingController(
+        text: e?.complementLoyer?.toStringAsFixed(2) ?? '');
+    _complementJustif = TextEditingController(
+        text: e?.complementLoyerJustification ?? '');
     _bailleurEstSociete = e?.bailleurEstSociete ?? false;
     if (e != null) {
       _garants.addAll(e.garants);
@@ -166,6 +194,8 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     _animaux = e?.animauxAutorises ?? false;
     _solidariteColo = e?.clauseSolidariteColo ?? true;
     _chargesIncluses = e?.chargesIncluses ?? false;
+    _assuranceGli = e?.assuranceLoyersImpayes ?? false;
+    _locataireEtudiant = e?.locataireEtudiantApprenti ?? false;
     if (e != null) _selectedLocataireIds.addAll(e.locataireIds);
     _referentColo = e?.referentColocataireId;
 
@@ -243,6 +273,11 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     _bailleurRaisonSociale.dispose();
     _bailleurSiret.dispose();
     _bailleurRepresentant.dispose();
+    _precedentLoyer.dispose();
+    _loyerRef.dispose();
+    _loyerRefMajore.dispose();
+    _complementLoyer.dispose();
+    _complementJustif.dispose();
     super.dispose();
   }
 
@@ -264,6 +299,26 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
       lastDate: DateTime(DateTime.now().year + 20),
     );
     if (picked != null) setState(() => _dateDebut = picked);
+  }
+
+  /// A2 — sélection d'une date du loyer du précédent locataire (versement ou
+  /// dernière révision). Dates passées uniquement.
+  Future<void> _pickPrecedentDate({required bool versement}) async {
+    final current = versement ? _precedentVersement : _precedentRevision;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? DateTime.now(),
+      firstDate: DateTime(DateTime.now().year - 20),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (versement) {
+        _precedentVersement = picked;
+      } else {
+        _precedentRevision = picked;
+      }
+    });
   }
 
   /// Sélectionne un fichier et le copie dans le sandbox de l'app. Retourne le
@@ -463,6 +518,19 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
       );
       return;
     }
+    // E5 — cumul GLI + caution interdit (sauf étudiant/apprenti). Ne bloque que
+    // si une caution est effectivement renseignée. 📚 loi 89-462, art. 22-1.
+    if (_garants.isNotEmpty) {
+      final gliErr = FranceBailRules.cautionGliError(
+        assuranceLoyersImpayes: _assuranceGli,
+        locataireEtudiantApprenti: _locataireEtudiant,
+      );
+      if (gliErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(gliErr)));
+        return;
+      }
+    }
     final svc = context.read<ContratBailService>();
     final dureeMois = int.tryParse(_dureeMois.text) ?? _type.dureeDefautMois;
     final dateFin = DateTime(
@@ -472,7 +540,11 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     );
     final loyer = double.tryParse(_loyerHC.text.replaceAll(',', '.')) ?? 0;
     final charges = double.tryParse(_charges.text.replaceAll(',', '.')) ?? 0;
-    final depot = double.tryParse(_depot.text.replaceAll(',', '.')) ?? 0;
+    // A7 — bail mobilité : dépôt de garantie interdit, forcé à 0 (loi ELAN,
+    // art. 25-12 loi 89-462).
+    final depot = _type == BailType.mobilite
+        ? 0.0
+        : (double.tryParse(_depot.text.replaceAll(',', '.')) ?? 0);
     final jour = int.tryParse(_jourEcheance.text) ?? 5;
 
     final existing = widget.existing;
@@ -517,9 +589,33 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
     contrat.animauxAutorises = _animaux;
     contrat.noteAnimaux =
         _noteAnimaux.text.trim().isEmpty ? null : _noteAnimaux.text.trim();
-    contrat.clauseSolidariteColo = _solidariteColo;
+    // A7 — pas de clause de solidarité hors colocation (notamment mobilité).
+    contrat.clauseSolidariteColo =
+        _type == BailType.colocation ? _solidariteColo : false;
     contrat.equipementsMeuble = Map<String, bool>.from(_equipements);
     contrat.chargesIncluses = _chargesIncluses;
+    contrat.assuranceLoyersImpayes = _assuranceGli;
+    contrat.locataireEtudiantApprenti = _locataireEtudiant;
+    // A2 — loyer du précédent locataire (relocation < 18 mois). Champ vide → null.
+    contrat.precedentLoyerMontant =
+        double.tryParse(_precedentLoyer.text.replaceAll(',', '.'));
+    contrat.precedentLoyerDateVersement = _precedentVersement;
+    contrat.precedentLoyerDateRevision = _precedentRevision;
+    // A5 — encadrement des loyers. Hors zone → tous les champs à null.
+    contrat.zoneEncadrementLoyers = _zoneEncadrement;
+    contrat.loyerReference = _zoneEncadrement
+        ? double.tryParse(_loyerRef.text.replaceAll(',', '.'))
+        : null;
+    contrat.loyerReferenceMajore = _zoneEncadrement
+        ? double.tryParse(_loyerRefMajore.text.replaceAll(',', '.'))
+        : null;
+    contrat.complementLoyer = _zoneEncadrement
+        ? double.tryParse(_complementLoyer.text.replaceAll(',', '.'))
+        : null;
+    contrat.complementLoyerJustification =
+        _zoneEncadrement && _complementJustif.text.trim().isNotEmpty
+            ? _complementJustif.text.trim()
+            : null;
     contrat.justificatifMobilite =
         _justifMobilite.text.trim().isEmpty ? null : _justifMobilite.text.trim();
     contrat.attestationAssurance = _attestationAssurance;
@@ -706,6 +802,7 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                     ),
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
                     validator: (v) {
                       final n =
                           double.tryParse((v ?? '').replaceAll(',', '.'));
@@ -734,6 +831,182 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            // A2 — loyer du précédent locataire (relocation < 18 mois). Replié
+            // par défaut, déplié si déjà renseigné. 📚 décret n° 2015-587.
+            Theme(
+              data: Theme.of(context)
+                  .copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                initiallyExpanded: _precedentLoyer.text.isNotEmpty ||
+                    _precedentVersement != null ||
+                    _precedentRevision != null,
+                title: const Text('Loyer du locataire précédent'),
+                subtitle: const Text(
+                  'Relocation : à renseigner si le précédent locataire est '
+                  'parti il y a moins de 18 mois (décret n° 2015-587).',
+                  style: TextStyle(fontSize: 12),
+                ),
+                children: [
+                  TextFormField(
+                    controller: _precedentLoyer,
+                    decoration: const InputDecoration(
+                      labelText: 'Dernier loyer acquitté',
+                      suffixText: '€',
+                      prefixIcon: Icon(Icons.history),
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () => _pickPrecedentDate(versement: true),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Date de versement du dernier loyer',
+                        prefixIcon: const Icon(Icons.event_outlined),
+                        suffixIcon: _precedentVersement == null
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () => setState(
+                                    () => _precedentVersement = null),
+                              ),
+                      ),
+                      child: Text(_precedentVersement == null
+                          ? 'Non renseignée'
+                          : dateFmt.format(_precedentVersement!)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () => _pickPrecedentDate(versement: false),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Date de la dernière révision du loyer',
+                        prefixIcon: const Icon(Icons.event_repeat_outlined),
+                        suffixIcon: _precedentRevision == null
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () => setState(
+                                    () => _precedentRevision = null),
+                              ),
+                      ),
+                      child: Text(_precedentRevision == null
+                          ? 'Non renseignée'
+                          : dateFmt.format(_precedentRevision!)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // A5 — encadrement des loyers (zones tendues). 📚 loi 89-462 art. 140.
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _zoneEncadrement,
+              onChanged: (v) => setState(() => _zoneEncadrement = v),
+              title: const Text("Logement en zone d'encadrement des loyers"),
+              subtitle: const Text(
+                'Loyers de référence fixés par arrêté préfectoral.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            if (_zoneEncadrement) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _loyerRef,
+                      decoration: const InputDecoration(
+                        labelText: 'Loyer de référence',
+                        suffixText: '€/m²',
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _loyerRefMajore,
+                      decoration: const InputDecoration(
+                        labelText: 'Réf. majoré',
+                        suffixText: '€/m²',
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _complementLoyer,
+                decoration: const InputDecoration(
+                  labelText: 'Complément de loyer (mensuel)',
+                  suffixText: '€',
+                  prefixIcon: Icon(Icons.add_box_outlined),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _complementJustif,
+                decoration: const InputDecoration(
+                  labelText: 'Caractéristiques justifiant le complément',
+                  prefixIcon: Icon(Icons.notes_outlined),
+                  hintText: 'Terrasse, vue exceptionnelle, équipement de luxe…',
+                ),
+                maxLines: 2,
+              ),
+              Builder(
+                builder: (_) {
+                  final warn = FranceBailRules.encadrementDepassementWarning(
+                    zoneEncadrement: true,
+                    loyerHC:
+                        double.tryParse(_loyerHC.text.replaceAll(',', '.')) ?? 0,
+                    surfaceM2: widget.logement.surface,
+                    loyerReferenceMajore: double.tryParse(
+                        _loyerRefMajore.text.replaceAll(',', '.')),
+                    complementLoyer: double.tryParse(
+                        _complementLoyer.text.replaceAll(',', '.')),
+                  );
+                  if (warn == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(warn,
+                                style: const TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<ModePaiement>(
               initialValue: _modePaiement,
@@ -976,6 +1249,28 @@ class _ContratBailFormScreenState extends State<ContratBailFormScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Ajouter un garant'),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _assuranceGli,
+              onChanged: (v) => setState(() => _assuranceGli = v),
+              title: const Text('Assurance loyers impayés (GLI)'),
+              subtitle: const Text(
+                'Le cumul GLI + caution est interdit, sauf locataire étudiant '
+                'ou apprenti (loi n° 89-462, art. 22-1).',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            if (_assuranceGli && _garants.isNotEmpty)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _locataireEtudiant,
+                onChanged: (v) => setState(() => _locataireEtudiant = v),
+                title: const Text('Locataire étudiant ou apprenti'),
+                subtitle: const Text(
+                  'Exception autorisant le cumul GLI + caution.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
             const SizedBox(height: 16),
             _Section('Clauses du bail'),
             const Padding(

@@ -228,7 +228,7 @@ class ContratBailPdfBuilder {
         ),
         build: (ctx) => [
           // ARTICLE 1 - Parties
-          section('Article 1 — Parties', [
+          section('I — Désignation des parties', [
             pw.Text('Bailleur', style: h2),
             pw.SizedBox(height: 4),
             if (bail.bailleurEstSociete) ...[
@@ -318,11 +318,11 @@ class ContratBailPdfBuilder {
           ]),
 
           // ARTICLE 2 - Logement
-          section('Article 2 — Description du logement', [
+          section('II — Objet du contrat : désignation du logement', [
             kv('Adresse', bail.adresseLogement),
             kv('Type', logement.type.label),
             kv('Surface habitable',
-                '${bail.surfaceM2.toStringAsFixed(1)} m² (loi Boutin)'),
+                '${bail.surfaceM2.toStringAsFixed(1)} m² (art. 3, loi n°89-462)'),
             kv('Nombre de pièces', '${bail.nbPieces}'),
             if (bail.etage != null && bail.etage!.isNotEmpty)
               kv('Étage', bail.etage!),
@@ -337,10 +337,21 @@ class ContratBailPdfBuilder {
               pw.SizedBox(height: 4),
               paragraph(bail.descriptionLogement!),
             ],
+            // Clause art. 3-1 — écart de surface > 5 % (hors bail saisonnier).
+            if (bail.type != BailType.saisonnier) ...[
+              pw.SizedBox(height: 4),
+              paragraph(
+                'Conformément à l\'article 3-1 de la loi n° 89-462 du 6 juillet '
+                '1989, lorsque la surface habitable réelle est inférieure de '
+                'plus d\'un vingtième (5 %) à celle exprimée au présent '
+                'contrat, le bailleur supporte, à la demande du locataire, une '
+                'diminution du loyer proportionnelle à l\'écart constaté.',
+              ),
+            ],
           ]),
 
           // ARTICLE 3 - Durée
-          section('Article 3 — Durée du bail', [
+          section('III — Date de prise d\'effet et durée du contrat', [
             kv('Date de prise d\'effet', dateLong.format(bail.dateDebut)),
             kv('Durée initiale', '${bail.dureeMois} mois'),
             kv('Date de fin', dateLong.format(bail.dateFin)),
@@ -353,7 +364,7 @@ class ContratBailPdfBuilder {
           ]),
 
           // ARTICLE 4 - Loyer et charges
-          section('Article 4 — Loyer et charges', [
+          section('IV — Conditions financières', [
             kv('Loyer mensuel hors charges', money.format(bail.loyerHC)),
             kv('Provisions sur charges', money.format(bail.charges)),
             kv('Total mensuel', money.format(bail.totalMensuel)),
@@ -367,23 +378,6 @@ class ContratBailPdfBuilder {
             kv('Mode de paiement', bail.modePaiement.label),
             if (bail.rib != null && bail.rib!.isNotEmpty)
               kv('RIB du bailleur', bail.rib!),
-            kv('Dépôt de garantie', money.format(bail.depotGarantie)),
-            if (bail.fraisAgence != null && bail.fraisAgence! > 0)
-              kv('Frais d\'agence', money.format(bail.fraisAgence!)),
-            pw.SizedBox(height: 4),
-            paragraph(
-              'Le dépôt de garantie sera restitué au locataire dans un délai '
-              'de 1 à 2 mois après la fin du bail, sous déduction des éventuels '
-              'dégâts constatés lors de l\'état des lieux de sortie (article '
-              '22 de la loi du 6 juillet 1989). Le dépôt ne peut excéder '
-              '${bail.type.plafondDepotMois} mois de loyer hors charges pour '
-              'ce type de bail.',
-            ),
-            if (bail.modalitesRestitutionDepot != null &&
-                bail.modalitesRestitutionDepot!.isNotEmpty)
-              paragraph(
-                'Modalités de restitution : ${bail.modalitesRestitutionDepot!}',
-              ),
             if (bail.regularisationChargesAnnuelle)
               paragraph(
                 'Les charges feront l\'objet d\'une régularisation annuelle '
@@ -397,10 +391,118 @@ class ContratBailPdfBuilder {
                 'La hausse ne pourra excéder l\'évolution de l\'IRL sur la '
                 'période écoulée.',
               ),
+            // A2 — relocation : loyer du précédent locataire (décret n° 2015-587).
+            if (bail.precedentLoyerMontant != null) ...[
+              pw.SizedBox(height: 4),
+              paragraph(
+                'Loyer du précédent locataire — le précédent locataire ayant '
+                'quitté le logement moins de dix-huit mois avant la signature '
+                'du présent contrat :',
+              ),
+              kv('Dernier loyer acquitté',
+                  money.format(bail.precedentLoyerMontant!)),
+              if (bail.precedentLoyerDateVersement != null)
+                kv('Date de versement',
+                    dateFmt.format(bail.precedentLoyerDateVersement!)),
+              if (bail.precedentLoyerDateRevision != null)
+                kv('Date de la dernière révision',
+                    dateFmt.format(bail.precedentLoyerDateRevision!)),
+            ],
+            // A5 — encadrement des loyers (zone tendue). 📚 loi 89-462, art. 140.
+            if (bail.zoneEncadrementLoyers) ...[
+              pw.SizedBox(height: 4),
+              paragraph(
+                'Le logement est situé dans une zone d\'encadrement des loyers. '
+                'Les loyers de référence ci-dessous sont fixés par arrêté '
+                'préfectoral (loi n° 89-462, art. 140) :',
+              ),
+              if (bail.loyerReference != null)
+                kv('Loyer de référence',
+                    '${money.format(bail.loyerReference!)} / m²'),
+              if (bail.loyerReferenceMajore != null)
+                kv('Loyer de référence majoré',
+                    '${money.format(bail.loyerReferenceMajore!)} / m²'),
+              if (bail.complementLoyer != null && bail.complementLoyer! > 0) ...[
+                kv('Complément de loyer', money.format(bail.complementLoyer!)),
+                if (bail.complementLoyerJustification != null &&
+                    bail.complementLoyerJustification!.isNotEmpty)
+                  kv('Caractéristiques justifiant le complément',
+                      bail.complementLoyerJustification!),
+              ],
+            ],
           ]),
 
-          // ARTICLE 5 - Obligations bailleur
-          section('Article 5 — Obligations du bailleur', [
+          // V — Travaux (plan indicatif du contrat type, décret n° 2015-587).
+          section('V — Travaux', [
+            paragraph(
+              'Travaux effectués depuis la fin du dernier contrat de location '
+              'ou en cours, et travaux convenus entre les parties : néant, sauf '
+              'stipulation contraire portée aux conditions particulières du '
+              'présent contrat.',
+            ),
+          ]),
+
+          // VI — Garanties : dépôt de garantie (texte d'origine, déplacé ici).
+          section('VI — Garanties', [
+            kv('Dépôt de garantie', money.format(bail.depotGarantie)),
+            pw.SizedBox(height: 4),
+            // D1 — rappel explicite des plafonds légaux par type (1 / 2 / 0 mois).
+            paragraph(
+              'Plafond légal du dépôt de garantie : un mois de loyer hors '
+              'charges en location nue ; deux mois en location meublée ; aucun '
+              'dépôt de garantie ne peut être exigé pour un bail mobilité '
+              '(loi n° 89-462 du 6 juillet 1989).',
+            ),
+            paragraph(
+              'Le dépôt de garantie est restitué dans un délai maximal de '
+              '1 mois lorsque l\'état des lieux de sortie est conforme à celui '
+              'd\'entrée, ou de 2 mois dans le cas contraire, à compter de la '
+              'remise des clés, sous déduction des sommes justifiées restant '
+              'dues par le locataire (article 22 de la loi du 6 juillet 1989). '
+              'À défaut de restitution dans ces délais, le solde restant dû est '
+              'majoré d\'une somme égale à 10 % du loyer mensuel hors charges '
+              'par mois de retard entamé. Le dépôt ne peut excéder '
+              '${bail.type.plafondDepotMois} mois de loyer hors charges pour '
+              'ce type de bail.',
+            ),
+            if (bail.modalitesRestitutionDepot != null &&
+                bail.modalitesRestitutionDepot!.isNotEmpty)
+              paragraph(
+                'Modalités de restitution : ${bail.modalitesRestitutionDepot!}',
+              ),
+          ]),
+
+          // VII — Clause de solidarité et d'indivisibilité.
+          section('VII — Clause de solidarité et d\'indivisibilité', [
+            paragraph(
+              bail.type == BailType.colocation && bail.clauseSolidariteColo
+                  ? 'En cas de pluralité de locataires, les colocataires et '
+                      'leurs cautions éventuelles sont tenus solidairement et '
+                      'indivisiblement de l\'ensemble des obligations nées du '
+                      'présent bail, notamment du paiement du loyer et des '
+                      'charges.'
+                  : 'Sans objet : le logement est donné à bail à un locataire '
+                      'unique.',
+            ),
+          ]),
+
+          // VIII — Honoraires de location et état des lieux.
+          section('VIII — Honoraires de location et état des lieux', [
+            if (bail.fraisAgence != null && bail.fraisAgence! > 0)
+              kv('Honoraires à la charge du locataire',
+                  money.format(bail.fraisAgence!)),
+            paragraph(
+              'Les honoraires de location à la charge du locataire ne peuvent '
+              'excéder ceux dus par le bailleur ni les plafonds réglementaires '
+              'par mètre carré de surface habitable ; la part relative à '
+              'l\'établissement de l\'état des lieux d\'entrée ne peut excéder '
+              'celle du bailleur ni le plafond réglementaire (article 5 de la '
+              'loi n° 89-462 du 6 juillet 1989).',
+            ),
+          ]),
+
+          // Obligations des parties (rappel — hors numérotation du contrat type)
+          section('Obligations du bailleur', [
             bullet(
                 'Délivrer un logement décent (article 1719 du Code civil) en bon état d\'usage et de réparations.'),
             bullet('Garantir la jouissance paisible du logement.'),
@@ -413,7 +515,7 @@ class ContratBailPdfBuilder {
           ]),
 
           // ARTICLE 6 - Obligations locataire
-          section('Article 6 — Obligations du locataire', [
+          section('Obligations du locataire', [
             bullet('Payer le loyer et les charges aux dates convenues.'),
             bullet(
                 'User paisiblement du logement, conformément à sa destination.'),
@@ -447,7 +549,7 @@ class ContratBailPdfBuilder {
           ),
 
           // Clauses générales
-          section('Article 9 — Clauses générales', [
+          section('IX — Clauses générales', [
             pw.Text('Force majeure', style: h2),
             paragraph(
               'Aucune des parties ne pourra être tenue responsable en cas '
@@ -476,7 +578,7 @@ class ContratBailPdfBuilder {
 
           // Clauses particulières (catalogue activé + clauses personnalisées)
           if (bail.clauses.where((c) => c.active).isNotEmpty)
-            section('Article 10 — Clauses particulières', [
+            section('IX — Clauses particulières', [
               for (final c in bail.clauses.where((c) => c.active)) ...[
                 pw.Text(c.titre, style: h2),
                 paragraph(c.contenu),
@@ -484,8 +586,29 @@ class ContratBailPdfBuilder {
               ],
             ]),
 
-          // Mentions légales
-          section('Mentions légales', [
+          // X — Annexes (diagnostics).
+          if (diagnostics.isNotEmpty)
+            section('X — Annexes : diagnostics joints', [
+              for (final d in diagnostics)
+                bullet(
+                    '${d.type.label} — réalisé le ${dateFmt.format(d.dateRealisation)}'
+                    '${d.resume.isNotEmpty ? ' (${d.resume})' : ''}'
+                    '${d.estExpire ? ' — EXPIRÉ' : ''}'),
+            ]),
+
+          // X — Annexes (pièces jointes optionnelles).
+          if (bail.assuranceFilePath != null ||
+              bail.annexesOptionnelles.isNotEmpty)
+            section('X — Annexes : pièces jointes', [
+              if (bail.assuranceFilePath != null)
+                bullet(
+                    'Attestation d\'assurance du locataire : ${bail.assuranceFilePath!.split('/').last}'),
+              for (final a in bail.annexesOptionnelles)
+                bullet(a.split('/').last),
+            ]),
+
+          // XI — Mentions légales et information sur la conciliation.
+          section('XI — Mentions légales et conciliation', [
             paragraph(
               'Le présent contrat est régi par la loi n°89-462 du 6 juillet '
               '1989 (loi ALUR) et les articles 1708 à 1762 du Code civil. '
@@ -514,27 +637,6 @@ class ContratBailPdfBuilder {
               paragraph(bail.notes),
             ],
           ]),
-
-          // Annexes
-          if (diagnostics.isNotEmpty)
-            section('Annexes — Diagnostics joints', [
-              for (final d in diagnostics)
-                bullet(
-                    '${d.type.label} — réalisé le ${dateFmt.format(d.dateRealisation)}'
-                    '${d.resume.isNotEmpty ? ' (${d.resume})' : ''}'
-                    '${d.estExpire ? ' — EXPIRÉ' : ''}'),
-            ]),
-
-          // Pièces jointes optionnelles
-          if (bail.assuranceFilePath != null ||
-              bail.annexesOptionnelles.isNotEmpty)
-            section('Annexes — Pièces jointes', [
-              if (bail.assuranceFilePath != null)
-                bullet(
-                    'Attestation d\'assurance du locataire : ${bail.assuranceFilePath!.split('/').last}'),
-              for (final a in bail.annexesOptionnelles)
-                bullet(a.split('/').last),
-            ]),
         ],
       ),
     );
@@ -680,7 +782,7 @@ class ContratBailPdfBuilder {
             .map((e) => e.key)
             .toList();
         return [
-          section('Article 7 — Bail meublé (décret n°2015-981)', [
+          section('Conditions particulières — Bail meublé (décret n°2015-981)', [
             paragraph(
               'Le logement est loué meublé. Conformément au décret '
               'n°2015-981 du 31 juillet 2015, il est équipé du mobilier '
@@ -703,7 +805,7 @@ class ContratBailPdfBuilder {
         ];
       case BailType.colocation:
         return [
-          section('Article 7 — Bail de colocation', [
+          section('Conditions particulières — Bail de colocation', [
             if (bail.clauseSolidariteColo)
               paragraph(
                 'Solidarité entre colocataires : les colocataires sont '
@@ -727,7 +829,7 @@ class ContratBailPdfBuilder {
         ];
       case BailType.saisonnier:
         return [
-          section('Article 7 — Bail saisonnier', [
+          section('Conditions particulières — Bail saisonnier', [
             paragraph(
               'Durée maximale de 90 jours consécutifs. Au-delà, le bail '
               'serait requalifié en résidence principale. Pas de droit au '
@@ -750,7 +852,7 @@ class ContratBailPdfBuilder {
         ];
       case BailType.mobilite:
         return [
-          section('Article 7 — Bail mobilité (loi ELAN)', [
+          section('Conditions particulières — Bail mobilité (loi ELAN)', [
             paragraph(
               'Bail mobilité d\'une durée de ${bail.dureeMois} mois '
               '(comprise entre 1 et 10 mois), non renouvelable. Réservé '
@@ -772,7 +874,7 @@ class ContratBailPdfBuilder {
         ];
       case BailType.vide:
         return [
-          section('Article 7 — Bail vide (location nue)', [
+          section('Conditions particulières — Bail vide (location nue)', [
             paragraph(
               'Le logement est loué nu (non meublé). La durée minimale du '
               'bail est de 3 ans (6 ans si le bailleur est une personne '

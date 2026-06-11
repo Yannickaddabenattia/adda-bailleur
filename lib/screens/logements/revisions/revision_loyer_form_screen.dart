@@ -71,9 +71,20 @@ class _RevisionLoyerFormScreenState extends State<RevisionLoyerFormScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
     final loyer = double.parse(_loyerCtrl.text.replaceAll(',', '.'));
     final charges = double.parse(_chargesCtrl.text.replaceAll(',', '.'));
+    // Gel des loyers des passoires énergétiques (F/G) : aucune hausse de loyer
+    // n'est autorisée (loi n° 2021-1104, art. L. 173-1-1 CCH).
+    if (loyer > widget.logement.loyerHC + 0.01) {
+      final gelErr =
+          RevisionLoyerService.gelRevisionError(widget.logement.dpeClasse);
+      if (gelErr != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(gelErr)));
+        return;
+      }
+    }
+    setState(() => _saving = true);
     final service = context.read<RevisionLoyerService>();
     if (widget.existing == null) {
       final r = RevisionLoyer.create(
