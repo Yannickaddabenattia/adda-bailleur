@@ -333,6 +333,48 @@ class AutoBackupService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Supprime **toutes** les sauvegardes `.adls` accessibles dans le dossier
+  /// cloud lié. Utilisé par la suppression de compte (Apple 5.1.1(v)) pour
+  /// effacer les données déposées dans le cloud. **Best-effort** : n'échoue
+  /// jamais si le dossier est injoignable (dossier détaché, autre appareil…) ;
+  /// la suppression du compte doit aboutir même hors-ligne.
+  Future<void> deleteAllBackups() async {
+    final storedFolder = folderPath;
+    if (storedFolder == null || storedFolder.isEmpty) return;
+    final bookmark = folderBookmark;
+    String? resolvedPath;
+    try {
+      if (bookmark != null) {
+        resolvedPath = await SecureFolder.startAccess(bookmark);
+      }
+      final folder = resolvedPath ?? storedFolder;
+      if (Platform.isAndroid) {
+        if (!await AndroidSaf.isAccessible(folder)) return;
+        for (final f in await AndroidSaf.listFiles(folder)) {
+          if (BackupFileName.tryParse(f.name) == null) continue;
+          try {
+            await AndroidSaf.deleteFile(folder, f.name);
+          } catch (_) {/* fichier non critique */}
+        }
+      } else {
+        if (!Directory(folder).existsSync()) return;
+        for (final f in Directory(folder).listSync().whereType<File>()) {
+          final name = f.uri.pathSegments.last;
+          if (BackupFileName.tryParse(name) == null) continue;
+          try {
+            await f.delete();
+          } catch (_) {/* fichier non critique */}
+        }
+      }
+    } catch (_) {
+      // Dossier injoignable : on n'empêche pas la suppression du compte.
+    } finally {
+      if (bookmark != null && resolvedPath != null) {
+        await SecureFolder.stopAccess(bookmark);
+      }
+    }
+  }
+
   /// Désactive l'auto-backup et supprime la passphrase du keychain.
   /// N'efface PAS les fichiers .adls déjà écrits dans le cloud.
   Future<void> disable() async {
