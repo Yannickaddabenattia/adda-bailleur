@@ -1,6 +1,8 @@
 import 'package:hive_ce/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import 'country.dart';
+
 /// Type de logement.
 enum LogementType {
   appartement,
@@ -205,6 +207,34 @@ enum TypeAssainissement {
   }
 }
 
+/// Classe de performance énergétique (DPE), de A (meilleure) à G (passoire).
+///
+/// Champ unique partagé par le gel des loyers (révision IRL) et le blocage de
+/// génération de bail. 📚 loi n° 2021-1104 du 22/08/2021 (Climat et Résilience),
+/// art. L. 173-1-1 CCH.
+enum DpeClasse {
+  a,
+  b,
+  c,
+  d,
+  e,
+  f,
+  g;
+
+  String get label => name.toUpperCase();
+
+  /// Passoire énergétique (F ou G) : gel des loyers depuis le 24/08/2022.
+  bool get estPassoire => this == DpeClasse.f || this == DpeClasse.g;
+
+  static DpeClasse? fromName(String? value) {
+    if (value == null) return null;
+    for (final c in DpeClasse.values) {
+      if (c.name == value) return c;
+    }
+    return null;
+  }
+}
+
 /// Un bien immobilier géré par le propriétaire.
 class Logement {
   final String id;
@@ -276,6 +306,49 @@ class Logement {
   /// Active le plafond de déficit foncier renforcé à 21 400 €.
   bool enRenovationEnergetique;
 
+  // ─── Multi-pays (cf. ARCHITECTURE-MULTIPAYS) ──────────────────────────────
+  // Tous nullable / avec défaut France : les biens français existants restent
+  // valides sans migration. Index Hive 33+ (neufs).
+
+  /// Pays de localisation du bien. Pilote fiscalité, garantie, indexation, EDL.
+  Country country;
+
+  /// Région belge (droit du bail régionalisé + précompte). `null` hors BE.
+  BeRegion? beRegion;
+
+  /// Canton suisse (impôt foncier ‰, gains immobiliers). `null` hors CH.
+  ChCanton? chCanton;
+
+  /// Devise des montants du bien (`'EUR'` / `'CHF'`). Jamais de conversion en
+  /// base : les loyers/charges restent dans cette devise.
+  String currencyCode;
+
+  /// **Belgique** — revenu cadastral (valeur 1975 non indexée, sur
+  /// l'avertissement-extrait de rôle). Base du régime « location privée »
+  /// (RC indexé × 1,4). `null` = à saisir.
+  double? revenuCadastral;
+
+  /// **Belgique** — montant annuel du précompte immobilier saisi (les centimes
+  /// additionnels communaux/provinciaux varient par commune → saisie). `null`.
+  double? precompteImmobilierAnnuel;
+
+  /// **Suisse** — valeur fiscale/vénale du bien (impôt foncier & fortune).
+  double? valeurFiscale;
+
+  /// **Suisse** — taux d'impôt foncier en ‰ du canton/commune (0 si non
+  /// prélevé). `null` = à saisir.
+  double? tauxImpotFoncierPourMille;
+
+  /// **Suisse** — taux hypothécaire de référence (OFL) en vigueur à la
+  /// signature du bail, base du droit à la hausse/baisse de loyer. `null`.
+  double? tauxReferenceContrat;
+
+  /// **France** — classe DPE (A–G). Partagée entre le **gel IRL** (révision
+  /// interdite si F/G, depuis le 24/08/2022) et le **blocage de génération de
+  /// bail** (G interdit dès 2025). `null` = inconnu → l'UI avertit.
+  /// 📚 loi n° 2021-1104 du 22/08/2021, art. L. 173-1-1 CCH.
+  DpeClasse? dpeClasse;
+
   Logement({
     required this.id,
     required this.libelle,
@@ -310,6 +383,16 @@ class Logement {
     this.zoneTermites = false,
     this.regimeLmnp = RegimeLmnp.microBIC,
     this.enRenovationEnergetique = false,
+    this.country = Country.france,
+    this.beRegion,
+    this.chCanton,
+    this.currencyCode = 'EUR',
+    this.revenuCadastral,
+    this.precompteImmobilierAnnuel,
+    this.valeurFiscale,
+    this.tauxImpotFoncierPourMille,
+    this.tauxReferenceContrat,
+    this.dpeClasse,
   }) : contratBailPaths = contratBailPaths ?? <String>[];
 
   /// `true` si le dispositif fiscal du logement est en vigueur pour [year]
@@ -358,6 +441,16 @@ class Logement {
     DateTime? dateAcquisition,
     int dureeEngagementAnnees = 9,
     double prixRevient = 0,
+    Country country = Country.france,
+    BeRegion? beRegion,
+    ChCanton? chCanton,
+    String? currencyCode,
+    double? revenuCadastral,
+    double? precompteImmobilierAnnuel,
+    double? valeurFiscale,
+    double? tauxImpotFoncierPourMille,
+    double? tauxReferenceContrat,
+    DpeClasse? dpeClasse,
   }) {
     final now = DateTime.now().toUtc();
     return Logement(
@@ -381,6 +474,16 @@ class Logement {
       dateAcquisition: dateAcquisition,
       dureeEngagementAnnees: dureeEngagementAnnees,
       prixRevient: prixRevient,
+      country: country,
+      beRegion: beRegion,
+      chCanton: chCanton,
+      currencyCode: currencyCode ?? country.defaultCurrency,
+      revenuCadastral: revenuCadastral,
+      precompteImmobilierAnnuel: precompteImmobilierAnnuel,
+      valeurFiscale: valeurFiscale,
+      tauxImpotFoncierPourMille: tauxImpotFoncierPourMille,
+      tauxReferenceContrat: tauxReferenceContrat,
+      dpeClasse: dpeClasse,
     );
   }
 
@@ -460,13 +563,25 @@ class LogementAdapter extends TypeAdapter<Logement> {
         orElse: () => RegimeLmnp.microBIC,
       ),
       enRenovationEnergetique: (fields[32] as bool?) ?? false,
+      // Multi-pays (index 33+). Données françaises antérieures : champs absents
+      // → défaut France / EUR, aucune migration nécessaire.
+      country: Country.fromName(fields[33] as String?),
+      beRegion: BeRegion.fromName(fields[34] as String?),
+      chCanton: ChCanton.fromName(fields[35] as String?),
+      currencyCode: (fields[36] as String?) ?? 'EUR',
+      revenuCadastral: (fields[37] as num?)?.toDouble(),
+      precompteImmobilierAnnuel: (fields[38] as num?)?.toDouble(),
+      valeurFiscale: (fields[39] as num?)?.toDouble(),
+      tauxImpotFoncierPourMille: (fields[40] as num?)?.toDouble(),
+      tauxReferenceContrat: (fields[41] as num?)?.toDouble(),
+      dpeClasse: DpeClasse.fromName(fields[42] as String?),
     );
   }
 
   @override
   void write(BinaryWriter writer, Logement obj) {
     writer
-      ..writeByte(33)
+      ..writeByte(43)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -532,6 +647,26 @@ class LogementAdapter extends TypeAdapter<Logement> {
       ..writeByte(31)
       ..write(obj.regimeLmnp.name)
       ..writeByte(32)
-      ..write(obj.enRenovationEnergetique);
+      ..write(obj.enRenovationEnergetique)
+      ..writeByte(33)
+      ..write(obj.country.name)
+      ..writeByte(34)
+      ..write(obj.beRegion?.name)
+      ..writeByte(35)
+      ..write(obj.chCanton?.name)
+      ..writeByte(36)
+      ..write(obj.currencyCode)
+      ..writeByte(37)
+      ..write(obj.revenuCadastral)
+      ..writeByte(38)
+      ..write(obj.precompteImmobilierAnnuel)
+      ..writeByte(39)
+      ..write(obj.valeurFiscale)
+      ..writeByte(40)
+      ..write(obj.tauxImpotFoncierPourMille)
+      ..writeByte(41)
+      ..write(obj.tauxReferenceContrat)
+      ..writeByte(42)
+      ..write(obj.dpeClasse?.name);
   }
 }

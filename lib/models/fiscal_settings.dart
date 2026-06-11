@@ -34,6 +34,21 @@ class FiscalSettings {
   /// global des niches (10 000 €/an).
   double autresNichesFiscales;
 
+  // ─── Multi-pays : taux utilisateur saisis (BE/CH) ─────────────────────────
+  // En Belgique et en Suisse, il n'existe pas de taux national unique sur les
+  // loyers : le calcul dépend du taux marginal personnel. Ces champs sont
+  // nullable (défaut France = non utilisés) → données existantes intactes.
+
+  /// **Belgique** — taux marginal IPP de l'utilisateur (25/40/45/50 %). `null`.
+  double? tauxMarginalBE;
+
+  /// **Belgique** — taux des centimes additionnels communaux (ex. 0,07). `null`.
+  double? tauxCommunalBE;
+
+  /// **Suisse** — taux marginal d'imposition global estimé (fédéral + cantonal
+  /// + communal). `null` = à saisir.
+  double? tauxMarginalCH;
+
   FiscalSettings({
     this.parts = 1.0,
     this.autresRevenusBruts = 0.0,
@@ -42,6 +57,9 @@ class FiscalSettings {
     this.anneeBareme = 2026,
     this.autresNichesFiscales = 0.0,
     Map<int, double>? autresRevenusBrutsParAnnee,
+    this.tauxMarginalBE,
+    this.tauxCommunalBE,
+    this.tauxMarginalCH,
   })  : deficitsReportables = deficitsReportables ?? {},
         autresRevenusBrutsParAnnee = autresRevenusBrutsParAnnee ?? {};
 
@@ -95,13 +113,18 @@ class FiscalSettingsAdapter extends TypeAdapter<FiscalSettings> {
       anneeBareme: (fields[4] as int?) ?? 2026,
       autresNichesFiscales: (fields[5] as num?)?.toDouble() ?? 0.0,
       autresRevenusBrutsParAnnee: revParAnnee,
+      // Multi-pays (index 7+). Réglages français antérieurs : champs absents
+      // → null, aucun impact sur le calcul France.
+      tauxMarginalBE: (fields[7] as num?)?.toDouble(),
+      tauxCommunalBE: (fields[8] as num?)?.toDouble(),
+      tauxMarginalCH: (fields[9] as num?)?.toDouble(),
     );
   }
 
   @override
   void write(BinaryWriter writer, FiscalSettings obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.parts)
       ..writeByte(1)
@@ -115,6 +138,12 @@ class FiscalSettingsAdapter extends TypeAdapter<FiscalSettings> {
       ..writeByte(5)
       ..write(obj.autresNichesFiscales)
       ..writeByte(6)
-      ..write(obj.autresRevenusBrutsParAnnee);
+      ..write(obj.autresRevenusBrutsParAnnee)
+      ..writeByte(7)
+      ..write(obj.tauxMarginalBE)
+      ..writeByte(8)
+      ..write(obj.tauxCommunalBE)
+      ..writeByte(9)
+      ..write(obj.tauxMarginalCH);
   }
 }

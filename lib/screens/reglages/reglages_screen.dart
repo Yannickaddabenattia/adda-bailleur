@@ -14,6 +14,7 @@ import '../backup/pre_update_backups_screen.dart';
 import '../share/share_with_tenant_screen.dart';
 import 'cloud_sync_screen.dart';
 import 'confidentialite_screen.dart';
+import 'pays_fiscalite_screen.dart';
 
 class ReglagesScreen extends StatelessWidget {
   const ReglagesScreen({super.key});
@@ -121,6 +122,28 @@ class ReglagesScreen extends StatelessWidget {
               ),
             ],
           ),
+          if (AppConstants.multiPaysActif) ...[
+            const SizedBox(height: 20),
+            _SectionLabel('PAYS & FISCALITÉ'),
+            _Card(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.public, color: AppColors.primary),
+                  title: const Text('Pays & fiscalité'),
+                  subtitle: Text(
+                    'Taux marginaux Belgique / Suisse',
+                    style: TextStyle(color: context.textSecondaryColor),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const PaysFiscaliteScreen(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
           _SectionLabel('À PROPOS'),
           _Card(

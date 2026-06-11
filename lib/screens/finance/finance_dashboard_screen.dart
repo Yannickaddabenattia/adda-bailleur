@@ -36,6 +36,10 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
   String? _logementId;
   late int _year;
 
+  /// Devise affichée en vue globale (jamais de somme EUR + CHF). Le sélecteur
+  /// n'apparaît que si le portefeuille contient plusieurs devises.
+  String _currency = 'EUR';
+
   static const List<String> _moisCourts = [
     'J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D',
   ];
@@ -60,10 +64,27 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
     final revisionsSvc = context.watch<RevisionLoyerService>();
     final fiscaliteSvc = context.watch<FiscaliteService>();
 
-    final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    // Devises présentes dans le portefeuille. En vue globale on n'agrège qu'une
+    // devise à la fois ; un bien sélectionné impose la sienne.
+    final devises = logements.map((l) => l.currencyCode).toSet().toList()
+      ..sort();
+    final String devise;
+    if (_logementId != null) {
+      final sel = logements.where((l) => l.id == _logementId).toList();
+      devise = sel.isNotEmpty ? sel.first.currencyCode : 'EUR';
+    } else {
+      devise = devises.contains(_currency)
+          ? _currency
+          : (devises.isNotEmpty ? devises.first : 'EUR');
+    }
 
-    final filtered =
-        _logementId == null ? logements : logements.where((l) => l.id == _logementId).toList();
+    final money = NumberFormat.currency(
+        locale: 'fr_FR', symbol: devise == 'CHF' ? 'CHF' : '€');
+
+    final filtered = (_logementId == null
+            ? logements.where((l) => l.currencyCode == devise)
+            : logements.where((l) => l.id == _logementId))
+        .toList();
 
     final now = DateTime.now();
     final maxMonth =
@@ -148,8 +169,11 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
     // + prélèvements sociaux. Affiché uniquement quand on ne filtre pas sur
     // un logement précis (la fiscalité est globale).
     // Le barème IR doit exister pour l'année N-1 ; sinon on n'affiche rien.
+    // Fiscalité française = foyer, en EUR : ignorée hors devise EUR.
     CalculFiscalAnnuel? calcFiscalAnneeNm1;
-    if (_logementId == null && BaremeIR2026.aBaremePour(_year - 1)) {
+    if (_logementId == null &&
+        devise == 'EUR' &&
+        BaremeIR2026.aBaremePour(_year - 1)) {
       calcFiscalAnneeNm1 = fiscaliteSvc.calculer(_year - 1);
     }
     final surplusIRFoncier =
@@ -161,7 +185,9 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
     // IS + PFU des SCI à l'IS (vue globale uniquement : la fiscalité société
     // est par nature détachée d'un logement isolé).
     final sciSvc = context.watch<SCIService>();
-    final impotSCI = _logementId == null ? sciSvc.totalCoutFiscalIS(_year) : 0.0;
+    final impotSCI = (_logementId == null && devise == 'EUR')
+        ? sciSvc.totalCoutFiscalIS(_year)
+        : 0.0;
 
     final sorties = totalDepenses + totalCredits + impotFoncier + impotSCI;
     final bilan = totalReels - sorties;
@@ -212,6 +238,26 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                   logements: logements,
                   onChanged: (v) => setState(() => _logementId = v),
                 ),
+                if (_logementId == null && devises.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Text('Devise :'),
+                      ),
+                      for (final d in devises)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(d),
+                            selected: devise == d,
+                            onSelected: (_) => setState(() => _currency = d),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _BilanNetCard(
                   bilan: bilan,

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
+import '../../models/country.dart';
 import '../../models/locataire.dart';
 import '../../models/logement.dart';
 import '../../models/plan_logement.dart';
@@ -19,11 +21,13 @@ import 'logement_form_screen.dart';
 import 'plans/logement_plans_screen.dart';
 import 'exterior_walls_screen.dart';
 import '../contrats/contrat_bail_list_screen.dart';
+import '../contrats/placeholders_recap_screen.dart';
 import '../diagnostics/diagnostic_list_screen.dart';
 import '../../services/contrat_bail_service.dart';
 import '../../services/diagnostic_service.dart';
 import 'revisions/revisions_loyer_screen.dart';
 import '../finance/bilan_logement_screen.dart';
+import '../finance/foreign_fiscalite_screen.dart';
 
 class LogementDetailScreen extends StatelessWidget {
   final String logementId;
@@ -407,6 +411,44 @@ class LogementDetailScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (AppConstants.multiPaysActif &&
+              logement.country != Country.france)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Column(
+                  children: [
+                    _GradientButton(
+                      colors: const [Color(0xFF6366F1), Color(0xFF3B82F6)],
+                      icon: Icons.public,
+                      label:
+                          'Fiscalité ${logement.country.label} (estimation)',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ForeignFiscaliteScreen(
+                            logement: logement,
+                            year: DateTime.now().year,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _GradientButton(
+                      colors: const [Color(0xFFF59E0B), Color(0xFFD97706)],
+                      icon: Icons.gavel_outlined,
+                      label: 'Modèles de documents — points à valider',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PlaceholdersRecapScreen(
+                            country: logement.country,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: SizedBox(
               height: 24 + MediaQuery.of(context).viewPadding.bottom,

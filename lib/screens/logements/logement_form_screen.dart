@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/country.dart';
 import '../../models/logement.dart';
 import '../../models/sci.dart';
 import '../../services/fiscalite_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/sci_service.dart';
 import '../../widgets/primary_button.dart';
+import 'widgets/country_section.dart';
 
 class LogementFormScreen extends StatefulWidget {
   final Logement? logement;
@@ -49,7 +52,18 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
   bool _zoneTermites = false;
   RegimeLmnp _regimeLmnp = RegimeLmnp.microBIC;
   bool _enRenovationEnergetique = false;
+  DpeClasse? _dpeClasse;
   bool _saving = false;
+
+  // ─── Multi-pays (visible si AppConstants.multiPaysActif) ──────────────────
+  late Country _country;
+  BeRegion? _beRegion;
+  ChCanton? _chCanton;
+  late TextEditingController _revenuCadastral;
+  late TextEditingController _precompteImmo;
+  late TextEditingController _valeurFiscale;
+  late TextEditingController _tauxFoncierPourMille;
+  late TextEditingController _tauxReferenceContrat;
 
   bool get _isEdit => widget.logement != null;
 
@@ -98,6 +112,32 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
     _zoneTermites = l?.zoneTermites ?? false;
     _regimeLmnp = l?.regimeLmnp ?? RegimeLmnp.microBIC;
     _enRenovationEnergetique = l?.enRenovationEnergetique ?? false;
+    _dpeClasse = l?.dpeClasse;
+    _country = l?.country ?? Country.france;
+    _beRegion = l?.beRegion;
+    _chCanton = l?.chCanton;
+    _revenuCadastral = TextEditingController(text: _numStr(l?.revenuCadastral));
+    _precompteImmo =
+        TextEditingController(text: _numStr(l?.precompteImmobilierAnnuel));
+    _valeurFiscale = TextEditingController(text: _numStr(l?.valeurFiscale));
+    _tauxFoncierPourMille =
+        TextEditingController(text: _numStr(l?.tauxImpotFoncierPourMille));
+    _tauxReferenceContrat = TextEditingController(
+        text: _numStr(l?.tauxReferenceContrat == null
+            ? null
+            : l!.tauxReferenceContrat! * 100)); // stocké en fraction, saisi en %
+  }
+
+  static String _numStr(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+  }
+
+  /// Parse un champ numérique nullable (virgule décimale tolérée).
+  double? _d(TextEditingController c) {
+    final t = c.text.trim();
+    if (t.isEmpty) return null;
+    return double.tryParse(t.replaceAll(',', '.'));
   }
 
   @override
@@ -115,7 +155,31 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
     _prixRevient.dispose();
     _amortissementAnnuel.dispose();
     _anneeConstruction.dispose();
+    _revenuCadastral.dispose();
+    _precompteImmo.dispose();
+    _valeurFiscale.dispose();
+    _tauxFoncierPourMille.dispose();
+    _tauxReferenceContrat.dispose();
     super.dispose();
+  }
+
+  /// Applique les champs multi-pays à [l] (pays, région/canton, devise, valeurs
+  /// spécifiques BE/CH). Sans effet fonctionnel tant que `multiPaysActif` est
+  /// `false` : le pays reste France / EUR par défaut.
+  void _applyCountryFields(Logement l) {
+    l.country = _country;
+    l.beRegion = _country == Country.belgique ? _beRegion : null;
+    l.chCanton = _country == Country.suisse ? _chCanton : null;
+    l.currencyCode = _country.defaultCurrency;
+    l.revenuCadastral = _country == Country.belgique ? _d(_revenuCadastral) : null;
+    l.precompteImmobilierAnnuel =
+        _country == Country.belgique ? _d(_precompteImmo) : null;
+    l.valeurFiscale = _country == Country.suisse ? _d(_valeurFiscale) : null;
+    l.tauxImpotFoncierPourMille =
+        _country == Country.suisse ? _d(_tauxFoncierPourMille) : null;
+    // Taux de référence saisi en % → stocké en fraction (1,50 % → 0,015).
+    final tauxRefPct = _country == Country.suisse ? _d(_tauxReferenceContrat) : null;
+    l.tauxReferenceContrat = tauxRefPct == null ? null : tauxRefPct / 100;
   }
 
   Future<DateTime?> _pickDiagDate(DateTime? current) async {
@@ -287,6 +351,8 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
         l.zoneTermites = _zoneTermites;
         l.regimeLmnp = _regimeLmnp;
         l.enRenovationEnergetique = _enRenovationEnergetique;
+        l.dpeClasse = _dpeClasse;
+        _applyCountryFields(l);
         await service.update(l);
       } else {
         final logement = Logement.create(
@@ -328,6 +394,8 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
         logement.zoneTermites = _zoneTermites;
         logement.regimeLmnp = _regimeLmnp;
         logement.enRenovationEnergetique = _enRenovationEnergetique;
+        logement.dpeClasse = _dpeClasse;
+        _applyCountryFields(logement);
         await service.add(logement);
       }
       if (!mounted) return;
@@ -353,6 +421,24 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              if (AppConstants.multiPaysActif) ...[
+                _Section(title: 'Localisation fiscale'),
+                const SizedBox(height: 8),
+                CountrySection(
+                  country: _country,
+                  beRegion: _beRegion,
+                  chCanton: _chCanton,
+                  revenuCadastral: _revenuCadastral,
+                  precompteImmo: _precompteImmo,
+                  valeurFiscale: _valeurFiscale,
+                  tauxFoncierPourMille: _tauxFoncierPourMille,
+                  tauxReferenceContrat: _tauxReferenceContrat,
+                  onCountry: (c) => setState(() => _country = c),
+                  onRegion: (r) => setState(() => _beRegion = r),
+                  onCanton: (c) => setState(() => _chCanton = c),
+                ),
+                const SizedBox(height: 24),
+              ],
               _Section(title: 'Identification'),
               const SizedBox(height: 8),
               TextFormField(
@@ -508,6 +594,25 @@ class _LogementFormScreenState extends State<LogementFormScreen> {
                     .toList(),
                 onChanged: (v) =>
                     setState(() => _assainissement = v ?? _assainissement),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<DpeClasse?>(
+                initialValue: _dpeClasse,
+                decoration: const InputDecoration(
+                  labelText: 'Classe DPE',
+                  helperText:
+                      'F/G : gel des loyers · classe G interdite à la location dès 2025',
+                  prefixIcon: Icon(Icons.bolt_outlined),
+                ),
+                items: [
+                  const DropdownMenuItem<DpeClasse?>(
+                    value: null,
+                    child: Text('Non renseignée'),
+                  ),
+                  for (final c in DpeClasse.values)
+                    DropdownMenuItem(value: c, child: Text(c.label)),
+                ],
+                onChanged: (v) => setState(() => _dpeClasse = v),
               ),
               SwitchListTile(
                 value: _zoneTermites,

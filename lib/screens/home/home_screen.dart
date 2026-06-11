@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/currency_format.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_card.dart';
 import '../../widgets/backup_status_badge.dart';
@@ -54,7 +55,6 @@ class HomeScreen extends StatelessWidget {
     final fiscaliteSvc = context.watch<FiscaliteService>();
     final sciSvc = context.watch<SCIService>();
 
-    final money = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
     final now = DateTime.now();
     final monthName = DateFormat('MMMM', 'fr_FR').format(now);
 
@@ -62,9 +62,12 @@ class HomeScreen extends StatelessWidget {
       for (final l in locataires) ...l.logementIds,
     };
     final occupiedCount = logements.where((l) => occupiedLogementIds.contains(l.id)).length;
-    final totalLoyers = logements
-        .where((l) => occupiedLogementIds.contains(l.id))
-        .fold<double>(0, (s, l) => s + l.loyerTTC);
+    // Loyers groupés par devise (jamais de somme EUR + CHF).
+    final loyersParDevise = <String, double>{};
+    for (final l in logements.where((l) => occupiedLogementIds.contains(l.id))) {
+      loyersParDevise[l.currencyCode] =
+          (loyersParDevise[l.currencyCode] ?? 0) + l.loyerTTC;
+    }
     final occupationPct = logements.isEmpty
         ? 0
         : ((occupiedCount / logements.length) * 100).round();
@@ -78,31 +81,39 @@ class HomeScreen extends StatelessWidget {
     //  - crédits via annualPaymentsForLogement (rachat + mois actifs)
     //  - impôts fonciers N-1 (surplus IR + PS) + coût fiscal IS des SCI
     final year = now.year;
-    var revenuYTD = 0.0;
+    // Recettes et sorties groupées par devise du bien.
+    final revenuParDevise = <String, double>{};
+    final sortiesParDevise = <String, double>{};
     for (final l in logements) {
+      final cur = l.currencyCode;
       final encaisse = QuittanceService.encaisseParMoisLogement(
         quittances: quittances,
         logementId: l.id,
         year: year,
       );
       for (final v in encaisse.values) {
-        revenuYTD += v;
+        revenuParDevise[cur] = (revenuParDevise[cur] ?? 0) + v;
       }
+      sortiesParDevise[cur] = (sortiesParDevise[cur] ?? 0) +
+          depensesSvc.totalForLogementYear(l.id, year) +
+          creditsSvc.annualPaymentsForLogement(l.id, year);
     }
-    var depensesYTD = 0.0;
-    var creditsYTD = 0.0;
-    for (final l in logements) {
-      depensesYTD += depensesSvc.totalForLogementYear(l.id, year);
-      creditsYTD += creditsSvc.annualPaymentsForLogement(l.id, year);
-    }
+    // Impôts français (foyer, EUR) : imputés à la devise EUR uniquement.
     double impotFoncier = 0.0;
     if (BaremeIR2026.aBaremePour(year - 1)) {
       final c = fiscaliteSvc.calculer(year - 1);
       impotFoncier = c.impotAdditionnelFoncierNet + c.prelevementsSociaux;
     }
     final impotSCI = sciSvc.totalCoutFiscalIS(year);
-    final sortiesYTD = depensesYTD + creditsYTD + impotFoncier + impotSCI;
-    final bilanNet = revenuYTD - sortiesYTD;
+    if (impotFoncier != 0 || impotSCI != 0) {
+      sortiesParDevise['EUR'] =
+          (sortiesParDevise['EUR'] ?? 0) + impotFoncier + impotSCI;
+    }
+    final bilanParDevise = <String, double>{};
+    for (final cur in {...revenuParDevise.keys, ...sortiesParDevise.keys}) {
+      bilanParDevise[cur] =
+          (revenuParDevise[cur] ?? 0) - (sortiesParDevise[cur] ?? 0);
+    }
 
     // Première quittance à générer ce mois
     _PendingQuittance? alert;
@@ -151,7 +162,7 @@ class HomeScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: _KpiStrip(
-                loyers: money.format(totalLoyers),
+                loyers: CurrencyFormat.formatByCurrency(loyersParDevise),
                 biens: '${logements.length}',
                 occupation: '$occupationPct',
               ),
@@ -166,7 +177,7 @@ class HomeScreen extends StatelessWidget {
                   _AlertBanner(
                     title: 'Quittance de $monthName à générer',
                     subtitle:
-                        '${alert.locataire.fullName} · ${alert.logement.libelle} · ${money.format(alert.logement.loyerTTC)}',
+                        '${alert.locataire.fullName} · ${alert.logement.libelle} · ${CurrencyFormat.format(alert.logement.loyerTTC, alert.logement.currencyCode)}',
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const QuittanceFormScreen(),
@@ -280,7 +291,7 @@ class HomeScreen extends StatelessWidget {
                       iconBg: AppColors.error.withValues(alpha: 0.10),
                       title: 'Tableau de bord',
                       subtitle:
-                          'Bilan net : ${bilanNet >= 0 ? '+ ' : ''}${money.format(bilanNet)}',
+                          'Bilan net : ${CurrencyFormat.formatByCurrency(bilanParDevise, signed: true, separator: ' · ')}',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const FinanceDashboardScreen(),

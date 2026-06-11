@@ -2,6 +2,18 @@ class AppConstants {
   static const String appName = 'ADDA Bailleur';
   static const String appVersion = '1.1.0';
 
+  /// Feature flag multi-pays (Belgique / Suisse). **OFF par défaut.**
+  ///
+  /// Tant qu'il est `false` : sélecteur de pays masqué, tous les biens restent
+  /// France/EUR, aucun template/validation/écran BE/CH n'est atteignable →
+  /// comportement strictement identique à l'app France actuelle.
+  ///
+  /// **Procédure de réactivation : voir README.md, section « Multi-pays
+  /// (Belgique / Suisse) ».** Pré-requis : validation par un juriste belge +
+  /// une régie/fiduciaire suisse des templates et des valeurs fiscales ⚠️,
+  /// complétion des placeholders [À VALIDER JURISTE], QA des parcours 🇧🇪/🇨🇭.
+  static const bool multiPaysActif = false;
+
   // Noms des boîtes Hive chiffrées
   static const String userProfileBox = 'user_profile_box';
   static const String userProfileKey = 'current_user';
