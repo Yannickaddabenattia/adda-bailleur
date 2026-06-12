@@ -10,6 +10,7 @@ import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/quittance_service.dart';
 import '../../services/user_service.dart';
+import '../../widgets/disclaimer_dialog.dart';
 import 'quittance_edit_screen.dart';
 
 class QuittanceDetailScreen extends StatelessWidget {
@@ -62,6 +63,8 @@ class QuittanceDetailScreen extends StatelessWidget {
             icon: const Icon(Icons.share_outlined),
             tooltip: 'Partager',
             onPressed: () async {
+              // Avertissement juridique avant toute génération.
+              if (!await DisclaimerDialog.show(context)) return;
               final doc = await QuittancePdfBuilder.build(
                 quittance: q,
                 bailleur: bailleur,
@@ -81,6 +84,9 @@ class QuittanceDetailScreen extends StatelessWidget {
             icon: const Icon(Icons.print_outlined),
             tooltip: 'Imprimer',
             onPressed: () async {
+              // Avertissement juridique avant toute génération.
+              if (!await DisclaimerDialog.show(context)) return;
+              if (!context.mounted) return;
               await Printing.layoutPdf(
                 name: filename,
                 onLayout: (format) async {

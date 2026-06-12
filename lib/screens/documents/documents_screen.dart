@@ -16,6 +16,7 @@ import '../../services/logement_service.dart';
 import '../../services/plan_logement_service.dart';
 import '../../services/quittance_service.dart';
 import '../../services/user_service.dart';
+import '../../widgets/disclaimer_dialog.dart';
 import '../backup/backup_screen.dart';
 import '../etat_des_lieux/etat_des_lieux_detail_screen.dart';
 import '../quittances/quittance_detail_screen.dart';
@@ -491,6 +492,9 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       );
       return;
     }
+    // Avertissement juridique avant toute génération.
+    if (!await DisclaimerDialog.show(context)) return;
+    if (!context.mounted) return;
     final doc = await QuittancePdfBuilder.build(
       quittance: q,
       bailleur: bailleur,

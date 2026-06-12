@@ -20,6 +20,7 @@ import '../../services/dossier_locataire_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
 import '../../services/quittance_service.dart';
+import '../../widgets/disclaimer_dialog.dart';
 import '../logements/logement_detail_screen.dart';
 import '../quittances/quittance_form_screen.dart';
 import 'locataire_form_screen.dart';
@@ -353,6 +354,9 @@ class LocataireDetailScreen extends StatelessWidget {
       BuildContext context, Locataire locataire) async {
     final opts = await _askDossierOptions(context);
     if (opts == null) return;
+    if (!context.mounted) return;
+    // Avertissement juridique avant toute génération.
+    if (!await DisclaimerDialog.show(context)) return;
     if (!context.mounted) return;
     showDialog<void>(
       context: context,

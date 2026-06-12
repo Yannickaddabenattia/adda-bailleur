@@ -24,6 +24,7 @@ import '../../services/logement_service.dart';
 import '../../services/local_share_service.dart';
 import '../../services/plan_logement_service.dart';
 import '../../services/user_service.dart';
+import '../../widgets/disclaimer_dialog.dart';
 import '../sharing/local_share_screen.dart';
 import 'etat_des_lieux_edit_screen.dart';
 import 'locataire_signature_screen.dart';
@@ -134,14 +135,19 @@ class EtatDesLieuxDetailScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.print_outlined),
               tooltip: 'Imprimer',
-              onPressed: () => _printPdf(
-                edl: edl,
-                bailleur: bailleur,
-                logement: logement,
-                locataire: locataire,
-                wallPhotos: wallPhotos,
-                plans: plans,
-              ),
+              onPressed: () async {
+                // Avertissement juridique avant toute génération.
+                if (!await DisclaimerDialog.show(context)) return;
+                if (!context.mounted) return;
+                await _printPdf(
+                  edl: edl,
+                  bailleur: bailleur,
+                  logement: logement,
+                  locataire: locataire,
+                  wallPhotos: wallPhotos,
+                  plans: plans,
+                );
+              },
             ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -275,6 +281,9 @@ class EtatDesLieuxDetailScreen extends StatelessWidget {
     required List<WallPhoto> wallPhotos,
     required List<PlanLogement> plans,
   }) async {
+    // Avertissement juridique à lire et accepter avant toute génération.
+    if (!await DisclaimerDialog.show(context)) return;
+    if (!context.mounted) return;
     final hasPhotos = _collectPhotoPaths(edl, wallPhotos).isNotEmpty;
     final mode = await showModalBottomSheet<_ShareMode>(
       context: context,

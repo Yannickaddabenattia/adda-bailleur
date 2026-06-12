@@ -25,6 +25,7 @@ import '../../services/contrat_bail_validation_service.dart';
 import '../../services/diagnostic_service.dart';
 import '../../services/locataire_service.dart';
 import '../../services/logement_service.dart';
+import '../../widgets/disclaimer_dialog.dart';
 import '../../widgets/primary_button.dart';
 import 'avenant_list_screen.dart';
 import 'contrat_bail_form_screen.dart';
@@ -360,6 +361,10 @@ class ContratBailDetailScreen extends StatelessWidget {
       return;
     }
 
+    // Avertissement juridique à lire et accepter avant toute génération.
+    if (!await DisclaimerDialog.show(context)) return;
+    if (!context.mounted) return;
+
     final diagnostics = context
         .read<DiagnosticService>()
         .forLogement(bail.logementId)
@@ -520,6 +525,11 @@ class ContratBailDetailScreen extends StatelessWidget {
       );
       return;
     }
+
+    // Avertissement juridique à lire et accepter avant toute génération.
+    if (!await DisclaimerDialog.show(context)) return;
+    if (!context.mounted) return;
+
     final diagnostics = context
         .read<DiagnosticService>()
         .forLogement(bail.logementId)
