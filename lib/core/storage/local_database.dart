@@ -459,5 +459,57 @@ class LocalDatabase {
     await Hive.deleteBoxFromDisk(AppConstants.bailTemplatesBox);
     await Hive.deleteBoxFromDisk(AppConstants.settingsBox);
     await SecureKeyStore.deleteKey();
+    // Fichiers utilisateur stockés HORS Hive (photos, PDF, justificatifs,
+    // snapshots…) : la suppression des boxes ne les touche pas. On purge le
+    // périmètre connu pour que « tout effacer » couvre réellement TOUTES les
+    // données personnelles (conformité Apple 5.1.1(v)).
+    try {
+      final docsPath = (await getApplicationDocumentsDirectory()).path;
+      await wipeUserFiles(docsPath);
+    } catch (_) {/* répertoire documents injoignable : non bloquant */}
+    if (Platform.isAndroid) {
+      // Sur Android, les backups reçus vivent sous le stockage externe.
+      try {
+        final ext = await getExternalStorageDirectory();
+        if (ext != null) await wipeUserFiles(ext.path);
+      } catch (_) {/* non bloquant */}
+    }
+  }
+
+  /// Sous-dossiers de fichiers utilisateur stockés **hors Hive**, relatifs au
+  /// répertoire documents de l'app (et au stockage externe Android pour les
+  /// backups reçus). [wipeEverything] les supprime pour que la réinitialisation
+  /// et la suppression de compte effacent *toutes* les données personnelles —
+  /// pas seulement les boxes Hive.
+  ///
+  /// ⚠️ **À garder synchronisé** : toute nouvelle catégorie de fichier rangée
+  /// sous documents/ DOIT être ajoutée ici, sinon des données (noms, adresses,
+  /// signatures de locataires…) survivraient à la suppression de compte.
+  /// Couvert par `test/account_deletion_test.dart`.
+  static const List<String> userFileDirs = [
+    'photos', // PhotoStorage : photos d'état des lieux
+    'contrats', // ContratStorage : PDF de baux importés
+    'plans', // PlanLogementService : plans + murs
+    'diagnostics', // diagnostics importés (DPE…)
+    'edl_exports', // PDF d'états des lieux générés
+    'exports_compta', // ComptaExportService : exports CSV
+    'expense_justifs', // DepenseService._justifsDir : justificatifs de dépenses
+    _snapshotsDir, // pre_update_backups : copies .hive d'avant migration
+    'ADDA Bailleur document', // ReceivedBackupsService : bundles reçus
+    'sauvegardes_recues', // ancien dossier de backups reçus (legacy)
+  ];
+
+  /// Supprime, sous [dirPath], tous les dossiers listés dans [userFileDirs].
+  /// **Best-effort** : un dossier absent ou verrouillé n'interrompt pas la
+  /// purge des autres. Exposé pour les tests (cf. [wipeEverything]).
+  static Future<void> wipeUserFiles(String dirPath) async {
+    for (final name in userFileDirs) {
+      try {
+        final dir = Directory('$dirPath/$name');
+        if (await dir.exists()) {
+          await dir.delete(recursive: true);
+        }
+      } catch (_) {/* fichier/dossier non critique : on continue */}
+    }
   }
 }

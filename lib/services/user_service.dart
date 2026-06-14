@@ -91,8 +91,9 @@ class UserService extends ChangeNotifier {
   /// 1. **Cloud** : supprime les sauvegardes accessibles dans le dossier lié
   ///    puis délie le dossier (passphrase du trousseau incluse).
   /// 2. **Mot de passe maître** : effacé du trousseau + des réglages.
-  /// 3. **Local** : efface profil + toutes les données + clé de chiffrement
-  ///    (`wipeEverything`), puis ré-initialise une base vierge pour permettre
+  /// 3. **Local** : efface profil + toutes les données + clé de chiffrement +
+  ///    les fichiers hors Hive (photos, PDF, justificatifs, snapshots) via
+  ///    `wipeEverything`, puis ré-initialise une base vierge pour permettre
   ///    un nouvel onboarding.
   ///
   /// Les étapes cloud/mot de passe sont **best-effort** (ne bloquent pas la
