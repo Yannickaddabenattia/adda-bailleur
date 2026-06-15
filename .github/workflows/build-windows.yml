@@ -1,0 +1,84 @@
+name: Build Windows (test/preview)
+
+# Construit la version Windows de bureau sur un runner Windows (cloud GitHub).
+# → Pas besoin de PC Windows.
+#
+# IMPORTANT : la version Windows est destinée à être PAYANTE.
+# La sortie est donc un ARTEFACT PRIVÉ (pas une release publique gratuite comme Linux).
+# Récupération : onglet Actions → ce run → section "Artifacts" (il faut être connecté).
+# Test : à lancer dans une VM Windows (l'app n'est pas signée → SmartScreen affichera
+# "éditeur inconnu", c'est normal pour un build de test).
+#
+# Déclenchement :
+#   - manuel : Actions → "Build Windows (test/preview)" → Run workflow
+#   - ou en poussant un tag  win-v*   (ex. git tag win-v1.1.0 && git push origin win-v1.1.0)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (ex. 1.1.0). Vide = lue dans pubspec.yaml."
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'win-v*'
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.41.6'
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#win-v}"
+          else
+            V="$(grep '^version:' pubspec.yaml | head -1 | sed 's/version:[[:space:]]*//' | cut -d'+' -f1)"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version : $V"
+
+      - name: Package portable .zip
+        shell: pwsh
+        run: |
+          $V = "${{ steps.ver.outputs.version }}"
+          $rel = (Get-ChildItem build/windows -Recurse -Directory -Filter Release |
+                  Where-Object { Test-Path (Join-Path $_.FullName 'adda_location.exe') } |
+                  Select-Object -First 1).FullName
+          if (-not $rel) { throw "Dossier Release (avec adda_location.exe) introuvable" }
+          Write-Host "Build trouvé dans : $rel"
+          $stage = "adda-bailleur-$V"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse -Force "$rel/*" $stage
+          Compress-Archive -Path $stage -DestinationPath "adda-bailleur-$V-windows-x64.zip" -Force
+          Get-ChildItem "adda-bailleur-$V-windows-x64.zip" | ForEach-Object { Write-Host ("Archive : {0} ({1:N1} Mo)" -f $_.Name, ($_.Length/1MB)) }
+
+      - name: Upload artifact (privé)
+        uses: actions/upload-artifact@v4
+        with:
+          name: adda-bailleur-windows-x64
+          path: adda-bailleur-*-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 90
