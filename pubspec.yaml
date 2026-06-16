@@ -70,6 +70,7 @@ dev_dependencies:
   build_runner: ^2.4.14
   flutter_launcher_icons: ^0.14.2
   flutter_native_splash: ^2.4.4
+  msix: ^3.17.0
 
 flutter:
   uses-material-design: true
@@ -99,3 +100,25 @@ flutter_native_splash:
   android_12:
     color: "#1E3A8A"
     image: assets/images/logo_square.png
+
+# ─────────────────────────────────────────────────────────────────────────
+# Microsoft Store (packaging MSIX)
+# Build : sur Windows uniquement →  dart run msix:create --store
+# (lancé automatiquement par la CI .github/workflows/build-windows-store.yml)
+#
+# Les 3 valeurs d'identité ci-dessous proviennent de Partner Center
+#   (produit ADDA Bailleur → Gestion des produits → Identité du produit) :
+#     identity_name           = Package/Identity/Name
+#     publisher               = Package/Identity/Publisher (CN=...)
+#     publisher_display_name  = Package/Properties/PublisherDisplayName
+# Store ID : 9PLXG3DS5KXD  —  https://apps.microsoft.com/detail/9PLXG3DS5KXD
+# ─────────────────────────────────────────────────────────────────────────
+msix_config:
+  display_name: ADDA Bailleur
+  publisher_display_name: "ADDA BENATTIA"
+  identity_name: "ADDABENATTIA.ADDABailleur"
+  publisher: "CN=6C9AE533-E8BE-4BA8-B763-E570011DB53E"
+  msix_version: 1.1.0.0
+  logo_path: assets/images/logo_square.png
+  languages: fr-FR
+  store: true

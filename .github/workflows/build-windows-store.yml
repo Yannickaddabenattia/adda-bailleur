@@ -1,0 +1,83 @@
+name: Build Windows Store (MSIX)
+
+# Construit le paquet MSIX destiné au Microsoft Store, sur un runner Windows
+# (cloud GitHub) → pas besoin de PC Windows.
+#
+# Le MSIX produit est « store-ready » : il n'est PAS signé par toi, c'est
+# Microsoft qui le signe lors de la soumission dans Partner Center.
+# La sortie est un ARTEFACT PRIVÉ (.msix) à téléverser dans Partner Center.
+#
+# ⚠️  Pré-requis : avoir rempli les 3 valeurs d'identité dans pubspec.yaml
+#     (bloc msix_config), obtenues après réservation du nom dans Partner Center.
+#
+# Déclenchement :
+#   - manuel : Actions → "Build Windows Store (MSIX)" → Run workflow
+#   - ou en poussant un tag  store-v*  (ex. git tag store-v1.1.0 && git push origin store-v1.1.0)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version MSIX 4 parties (ex. 1.1.0.0). Vide = valeur de pubspec.yaml."
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'store-v*'
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.41.6'
+
+jobs:
+  build-msix:
+    name: Build MSIX (Store)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+
+      - name: Garde-fou — identité Partner Center renseignée
+        shell: pwsh
+        run: |
+          $p = Get-Content pubspec.yaml -Raw
+          if ($p -match 'A_REMPLIR') {
+            throw "Le bloc msix_config contient encore des 'A_REMPLIR'. Renseigne identity_name / publisher / publisher_display_name (valeurs Partner Center) avant de packager pour le Store."
+          }
+          Write-Host "Identité MSIX renseignée — OK"
+
+      - name: Build MSIX (store, non signé — Microsoft signe à la soumission)
+        shell: pwsh
+        run: |
+          $v = "${{ github.event.inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($v)) {
+            dart run msix:create --store
+          } else {
+            dart run msix:create --store --version $v
+          }
+
+      - name: Localiser le .msix généré
+        id: find
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem -Recurse -Filter *.msix | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $msix) { throw "Aucun fichier .msix généré." }
+          Write-Host ("MSIX : {0} ({1:N1} Mo)" -f $msix.FullName, ($msix.Length/1MB))
+          "path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifact (privé)
+        uses: actions/upload-artifact@v4
+        with:
+          name: adda-bailleur-msix-store
+          path: ${{ steps.find.outputs.path }}
+          if-no-files-found: error
+          retention-days: 90
