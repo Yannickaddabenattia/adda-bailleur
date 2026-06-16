@@ -5,7 +5,6 @@ import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
-import '../account/delete_account_action.dart';
 import '../backup/backup_screen.dart';
 import '../backup/pre_update_backups_screen.dart';
 import '../share/share_with_tenant_screen.dart';
@@ -29,7 +28,6 @@ class ReglagesScreen extends StatelessWidget {
           if (profile != null)
             _ProfileCard(
               fullName: profile.fullName,
-              email: profile.email,
               role: profile.role.label,
             ),
           const SizedBox(height: 20),
@@ -171,31 +169,6 @@ class ReglagesScreen extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          _SectionLabel('COMPTE'),
-          _Card(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.delete_forever_outlined,
-                    color: AppColors.error),
-                title: const Text(
-                  'Supprimer mon compte',
-                  style: TextStyle(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                subtitle: Text(
-                  'Efface définitivement le profil, toutes les données et les '
-                  'sauvegardes cloud',
-                  style: TextStyle(color: context.textSecondaryColor),
-                ),
-                trailing:
-                    const Icon(Icons.chevron_right, color: AppColors.error),
-                onTap: () => confirmDeleteAccount(context),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -204,11 +177,9 @@ class ReglagesScreen extends StatelessWidget {
 
 class _ProfileCard extends StatelessWidget {
   final String fullName;
-  final String email;
   final String role;
   const _ProfileCard({
     required this.fullName,
-    required this.email,
     required this.role,
   });
 
@@ -254,11 +225,6 @@ class _ProfileCard extends StatelessWidget {
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  email,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 const SizedBox(height: 6),
                 Container(

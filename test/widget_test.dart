@@ -60,16 +60,15 @@ void main() {
   });
 
   group('UserProfile', () {
-    test('create normalise nom (MAJ) et email (min)', () {
+    test('create normalise prénom et nom (MAJ)', () {
       final profile = UserProfile.create(
         role: UserRole.proprietaire,
         firstName: '  Yannick ',
         lastName: ' adda ',
-        email: '  Yannick@Mail.COM ',
       );
       expect(profile.firstName, 'Yannick');
       expect(profile.lastName, 'ADDA');
-      expect(profile.email, 'yannick@mail.com');
+      expect(profile.email, ''); // plus d'e-mail collecté (Apple 5.1.1(v))
       expect(profile.id.isNotEmpty, isTrue);
     });
 
@@ -78,7 +77,6 @@ void main() {
         role: UserRole.locataire,
         firstName: 'Jean',
         lastName: 'Dupont',
-        email: 'jean@dupont.fr',
       );
       expect(profile.verifyIntegrity(), isTrue);
     });
@@ -88,7 +86,6 @@ void main() {
         role: UserRole.proprietaire,
         firstName: 'Yannick',
         lastName: 'Adda',
-        email: 'a@b.com',
       );
       expect(profile.fullName, 'Yannick ADDA');
     });

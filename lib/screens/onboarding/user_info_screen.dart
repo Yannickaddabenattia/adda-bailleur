@@ -1,4 +1,3 @@
-import 'package:email_validator/email_validator.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -18,13 +17,11 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
 
   @override
   void dispose() {
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
-    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -36,7 +33,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
           role: widget.role,
           firstName: _firstNameCtrl.text.trim(),
           lastName: _lastNameCtrl.text.trim(),
-          email: _emailCtrl.text.trim(),
         ),
       ),
     );
@@ -106,22 +102,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   validator: (v) {
                     final value = v?.trim() ?? '';
                     if (value.length < 2) return 'Nom trop court';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (v) {
-                    final value = v?.trim() ?? '';
-                    if (!EmailValidator.validate(value)) {
-                      return 'Email invalide';
-                    }
                     return null;
                   },
                 ),

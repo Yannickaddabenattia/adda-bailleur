@@ -6,7 +6,7 @@ import 'user_role.dart';
 
 /// Profil utilisateur figé après configuration initiale.
 ///
-/// Les 4 champs **immuables** (role, firstName, lastName, email) ne peuvent
+/// Les 3 champs **immuables** (role, firstName, lastName) ne peuvent
 /// PAS être modifiés après la création. Le champ [integrityHash] permet
 /// de détecter toute tentative d'altération du stockage.
 class UserProfile {
@@ -14,6 +14,11 @@ class UserProfile {
   final UserRole role;
   final String firstName;
   final String lastName;
+
+  /// Hérité : plus aucun e-mail n'est collecté à l'onboarding (conformité
+  /// Apple 5.1.1(v) — pas de création de compte). Toujours `''` pour les
+  /// profils créés désormais ; conservé dans le modèle et l'adaptateur Hive
+  /// uniquement pour relire sans casse les profils existants.
   final String email;
   final DateTime createdAt;
   final String integrityHash;
@@ -33,13 +38,12 @@ class UserProfile {
     required UserRole role,
     required String firstName,
     required String lastName,
-    required String email,
   }) {
     final now = DateTime.now().toUtc();
     final id = const Uuid().v4();
     final normFirst = firstName.trim();
     final normLast = lastName.trim().toUpperCase();
-    final normEmail = email.trim().toLowerCase();
+    const normEmail = ''; // plus d'e-mail collecté (Apple 5.1.1(v))
     final hash = HashService.userIntegrityHash(
       role: role.name,
       firstName: normFirst,

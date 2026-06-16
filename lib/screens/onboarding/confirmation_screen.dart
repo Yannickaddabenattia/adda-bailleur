@@ -12,14 +12,12 @@ class ConfirmationScreen extends StatefulWidget {
   final UserRole role;
   final String firstName;
   final String lastName;
-  final String email;
 
   const ConfirmationScreen({
     super.key,
     required this.role,
     required this.firstName,
     required this.lastName,
-    required this.email,
   });
 
   @override
@@ -38,7 +36,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             role: widget.role,
             firstName: widget.firstName,
             lastName: widget.lastName,
-            email: widget.email,
           );
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -83,7 +80,6 @@ class _ConfirmationScreenState extends State<ConfirmationScreen> {
             _buildRow('Rôle', widget.role.label),
             _buildRow('Prénom', widget.firstName),
             _buildRow('Nom', widget.lastName.toUpperCase()),
-            _buildRow('Email', widget.email.toLowerCase()),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),

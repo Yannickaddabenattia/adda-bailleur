@@ -8,7 +8,6 @@ import '../../core/email_sender.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/backup_service.dart';
 import '../../widgets/primary_button.dart';
-import '../account/delete_account_action.dart';
 import 'auto_backup_settings_screen.dart';
 import 'received_backups_screen.dart';
 
@@ -399,20 +398,6 @@ end tell
                             builder: (_) => const ReceivedBackupsScreen(),
                           ),
                         ),
-              ),
-              const SizedBox(height: 16),
-              // Accès direct à la suppression de compte (Apple 5.1.1(v)) : efface
-              // aussi les sauvegardes cloud. Confirmation dans confirmDeleteAccount.
-              _ActionCard(
-                icon: Icons.delete_forever_outlined,
-                title: 'Supprimer mon compte',
-                description:
-                    'Efface définitivement votre profil, toutes vos données et '
-                    'les sauvegardes chiffrées de votre dossier cloud lié. '
-                    'Action irréversible — une confirmation vous sera demandée.',
-                button: 'Supprimer mon compte',
-                onPressed: _busy ? null : () => confirmDeleteAccount(context),
-                destructive: true,
               ),
             ],
           ),

@@ -1095,7 +1095,6 @@ class BackupService {
       role: UserRole.fromString(m['role'] as String),
       firstName: m['firstName'] as String,
       lastName: m['lastName'] as String,
-      email: m['email'] as String,
     );
   }
 

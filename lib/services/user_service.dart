@@ -25,7 +25,7 @@ class ProfileIntegrityException implements Exception {
 
 /// Service central pour le profil utilisateur.
 ///
-/// Garantit l'immuabilité des 4 champs (rôle, prénom, nom, email)
+/// Garantit l'immuabilité des 3 champs (rôle, prénom, nom)
 /// après leur première validation.
 class UserService extends ChangeNotifier {
   UserProfile? _current;
@@ -55,18 +55,16 @@ class UserService extends ChangeNotifier {
     required UserRole role,
     required String firstName,
     required String lastName,
-    required String email,
   }) async {
     if (_current != null) {
       throw ImmutableProfileException(
-        'Un profil existe déjà. Les champs rôle/nom/email sont figés.',
+        'Un profil existe déjà. Les champs rôle/prénom/nom sont figés.',
       );
     }
     final profile = UserProfile.create(
       role: role,
       firstName: firstName,
       lastName: lastName,
-      email: email,
     );
     await LocalDatabase.userBox.put(AppConstants.userProfileKey, profile);
     _current = profile;
