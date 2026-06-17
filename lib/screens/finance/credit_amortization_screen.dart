@@ -163,15 +163,17 @@ class CreditAmortizationScreen extends StatelessWidget {
                   );
 
                   if (wide) {
-                    return IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(child: cardsCol),
-                          const SizedBox(width: 12),
-                          Expanded(child: donutCard),
-                        ],
-                      ),
+                    // ⚠️ Pas d'IntrinsicHeight ici : le donut contient un
+                    // LayoutBuilder, et IntrinsicHeight tente de calculer une
+                    // hauteur intrinsèque à travers lui → exception + écran figé
+                    // sur grand écran (macOS / iPad). Alignement en haut à la place.
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: cardsCol),
+                        const SizedBox(width: 12),
+                        Expanded(child: donutCard),
+                      ],
                     );
                   }
                   return Column(
