@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/currency_format.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_icon_3d.dart';
 import '../../core/widgets/hover_card.dart';
 import '../../widgets/backup_status_badge.dart';
 import '../../widgets/foreign_backup_banner.dart';
@@ -23,6 +24,7 @@ import '../../services/sci_service.dart';
 import '../../services/user_service.dart';
 import '../../services/compta_export_service.dart';
 import '../../services/rappel_service.dart';
+import '../../services/theme_service.dart';
 import '../backup/backup_screen.dart';
 import '../contrats/mes_contrats_screen.dart';
 import '../diagnostics/mes_diagnostics_screen.dart';
@@ -208,7 +210,7 @@ class HomeScreen extends StatelessWidget {
                 _SectionGroup(
                   items: [
                     _SectionItem(
-                      icon: Icons.home_outlined,
+                      svgAsset: 'icon-logements',
                       iconColor: AppColors.primary,
                       iconBg: AppColors.primary.withValues(alpha: 0.10),
                       title: 'Mes logements',
@@ -221,7 +223,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.people_alt_outlined,
+                      svgAsset: 'icon-locataires',
                       iconColor: const Color(0xFF8B5CF6),
                       iconBg: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
                       title: 'Mes locataires',
@@ -239,7 +241,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.assignment_outlined,
+                      svgAsset: 'icon-etat-des-lieux',
                       iconColor: AppColors.accent,
                       iconBg: AppColors.accent.withValues(alpha: 0.12),
                       title: 'États des lieux',
@@ -252,7 +254,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.description_outlined,
+                      svgAsset: 'icon-contrats',
                       iconColor: const Color(0xFF0EA5E9),
                       iconBg: const Color(0xFF0EA5E9).withValues(alpha: 0.10),
                       title: 'Contrats de bail',
@@ -274,7 +276,7 @@ class HomeScreen extends StatelessWidget {
                 _SectionGroup(
                   items: [
                     _SectionItem(
-                      icon: Icons.receipt_long_outlined,
+                      svgAsset: 'icon-quittances',
                       iconColor: AppColors.success,
                       iconBg: AppColors.success.withValues(alpha: 0.10),
                       title: 'Quittances de loyer',
@@ -286,7 +288,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.show_chart_rounded,
+                      svgAsset: 'icon-tableau-de-bord',
                       iconColor: AppColors.error,
                       iconBg: AppColors.error.withValues(alpha: 0.10),
                       title: 'Tableau de bord',
@@ -305,7 +307,7 @@ class HomeScreen extends StatelessWidget {
                 _SectionGroup(
                   items: [
                     _SectionItem(
-                      icon: Icons.folder_outlined,
+                      svgAsset: 'icon-documents',
                       iconColor: context.textSecondaryColor,
                       iconBg: context.textSecondaryColor.withValues(alpha: 0.10),
                       title: 'Mes documents',
@@ -317,7 +319,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.bluetooth_searching,
+                      svgAsset: 'icon-partager',
                       iconColor: AppColors.primary,
                       iconBg: AppColors.primary.withValues(alpha: 0.10),
                       title: 'Partager avec un locataire',
@@ -329,7 +331,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     _SectionItem(
-                      icon: Icons.table_view_outlined,
+                      svgAsset: 'icon-export-csv',
                       iconColor: const Color(0xFF0EA5E9),
                       iconBg: const Color(0xFF0EA5E9).withValues(alpha: 0.10),
                       title: 'Export comptabilité (CSV)',
@@ -337,7 +339,7 @@ class HomeScreen extends StatelessWidget {
                       onTap: () => _exportCompta(context),
                     ),
                     _SectionItem(
-                      icon: Icons.shield_outlined,
+                      svgAsset: 'icon-sauvegarde',
                       iconColor: AppColors.success,
                       iconBg: AppColors.success.withValues(alpha: 0.10),
                       title: 'Sauvegarde & restauration',
@@ -410,6 +412,18 @@ class _Hero extends StatelessWidget {
               const Spacer(),
               const BackupStatusBadge(),
               const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => context.read<ThemeService>().toggle(),
+                tooltip: context.isDark ? 'Mode clair' : 'Mode sombre',
+                icon: Icon(
+                  context.isDark
+                      ? Icons.wb_sunny_rounded
+                      : Icons.nightlight_round,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 2),
               Container(
                 width: 38,
                 height: 38,
@@ -591,20 +605,20 @@ class _AlertBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amber = const Color(0xFFFEF3C7);
     final amberDark = const Color(0xFFB45309);
     return HoverCard(
       onTap: onTap,
-      accent: const Color(0xFFC66E1A),
-      borderRadius: BorderRadius.circular(16),
-      background: context.isDark ? const Color(0xFF3B2D08) : amber,
+      accent: AppColors.brandAmber,
+      borderRadius: BorderRadius.circular(13),
+      background: AppColors.brandAmber.withValues(alpha: 0.12),
+      borderColor: AppColors.brandAmber.withValues(alpha: 0.35),
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.accent,
+              color: AppColors.brandAmber,
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.access_time_rounded,
@@ -634,7 +648,32 @@ class _AlertBanner extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: amberDark),
+          const SizedBox(width: 10),
+          // Réutilise la même navigation que le tap sur la bannière
+          // (flux de création de quittance existant).
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.brandAmber,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Générer',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -657,7 +696,7 @@ class _QuickActions extends StatelessWidget {
       children: [
         Expanded(
           child: _QuickAction(
-            icon: Icons.receipt_long_outlined,
+            svgAsset: 'icon-quittances',
             label: 'Quittance',
             color: AppColors.success,
             onTap: onQuittance,
@@ -666,7 +705,7 @@ class _QuickActions extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _QuickAction(
-            icon: Icons.home_outlined,
+            svgAsset: 'icon-ajouter-bien',
             label: 'Ajouter bien',
             color: AppColors.primary,
             onTap: onAddBien,
@@ -675,7 +714,7 @@ class _QuickActions extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: _QuickAction(
-            icon: Icons.assignment_outlined,
+            svgAsset: 'icon-etat-des-lieux',
             label: 'État des lieux',
             color: const Color(0xFF8B5CF6),
             onTap: onEdl,
@@ -687,12 +726,12 @@ class _QuickActions extends StatelessWidget {
 }
 
 class _QuickAction extends StatelessWidget {
-  final IconData icon;
+  final String svgAsset;
   final String label;
   final Color color;
   final VoidCallback onTap;
   const _QuickAction({
-    required this.icon,
+    required this.svgAsset,
     required this.label,
     required this.color,
     required this.onTap,
@@ -709,13 +748,10 @@ class _QuickAction extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 24),
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(child: AppIcon3D(name: svgAsset, size: 40)),
           ),
           const SizedBox(height: 10),
           Text(
@@ -788,7 +824,7 @@ class _SectionGroup extends StatelessWidget {
 }
 
 class _SectionItem extends StatelessWidget {
-  final IconData icon;
+  final String svgAsset;
   final Color iconColor;
   final Color iconBg;
   final String title;
@@ -797,7 +833,7 @@ class _SectionItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SectionItem({
-    required this.icon,
+    required this.svgAsset,
     required this.iconColor,
     required this.iconBg,
     required this.title,
@@ -818,14 +854,10 @@ class _SectionItem extends StatelessWidget {
       clip: false,
       child: Row(
         children: [
-          Container(
+          SizedBox(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              color: iconBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 22),
+            child: Center(child: AppIcon3D(name: svgAsset, size: 40)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -896,10 +928,9 @@ class _DiagnosticsSectionItem extends StatelessWidget {
     final diagnostics = context.watch<DiagnosticService>().all;
     final expires = diagnostics.where((d) => d.estExpire).length;
     return _SectionItem(
-      icon: Icons.fact_check_outlined,
-      iconColor: expires > 0 ? AppColors.error : AppColors.success,
-      iconBg: (expires > 0 ? AppColors.error : AppColors.success)
-          .withValues(alpha: 0.10),
+      svgAsset: 'icon-diagnostics',
+      iconColor: AppColors.primary,
+      iconBg: AppColors.primary.withValues(alpha: 0.10),
       title: 'Diagnostics',
       subtitle: diagnostics.isEmpty
           ? 'DPE, ERP, plomb, gaz, électrique…'
@@ -922,10 +953,9 @@ class _RappelsSectionItem extends StatelessWidget {
     final rappels = context.watch<RappelService>().compute();
     final urgents = rappels.where((r) => r.severite >= 2).length;
     return _SectionItem(
-      icon: Icons.notifications_active_outlined,
-      iconColor: urgents > 0 ? AppColors.error : const Color(0xFF7C3AED),
-      iconBg: (urgents > 0 ? AppColors.error : const Color(0xFF7C3AED))
-          .withValues(alpha: 0.10),
+      svgAsset: 'icon-rappels',
+      iconColor: const Color(0xFF7C3AED),
+      iconBg: const Color(0xFF7C3AED).withValues(alpha: 0.10),
       title: 'Rappels',
       subtitle: rappels.isEmpty
           ? 'Aucun rappel actif'

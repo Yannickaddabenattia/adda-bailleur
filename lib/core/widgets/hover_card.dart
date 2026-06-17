@@ -88,16 +88,17 @@ class _HoverCardState extends State<HoverCard> {
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 26,
-                  offset: const Offset(0, 12),
-                ),
-                BoxShadow(
-                  color: widget.accent.withValues(alpha: 0.32),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
               ]
-            : const [],
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: widget.clip
           ? ClipRRect(

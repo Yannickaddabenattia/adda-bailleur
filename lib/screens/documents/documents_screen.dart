@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/pdf/quittance_pdf.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_icon_3d.dart';
 import '../../core/widgets/hover_card.dart';
 import '../../models/etat_des_lieux.dart';
 import '../../models/locataire.dart';
@@ -769,7 +770,7 @@ class _FilterPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = selected ? const Color(0xFF0F1B3A) : context.surfaceColor;
+    final bg = selected ? AppColors.brandIndigo : context.surfaceColor;
     final fg = selected ? Colors.white : context.textPrimaryColor;
     return InkWell(
       borderRadius: BorderRadius.circular(99),
@@ -935,7 +936,7 @@ class _DocCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _PdfThumb(label: isQuittance ? 'REÇU' : 'EDL'),
+                _PdfThumb(isQuittance: isQuittance),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1043,37 +1044,33 @@ class _DocCard extends StatelessWidget {
 }
 
 class _PdfThumb extends StatelessWidget {
-  final String label;
-  const _PdfThumb({required this.label});
+  final bool isQuittance;
+  const _PdfThumb({required this.isQuittance});
 
   @override
   Widget build(BuildContext context) {
+    final iconName =
+        isQuittance ? 'icon-quittances' : 'icon-etat-des-lieux';
+    final label = isQuittance ? 'REÇU' : 'EDL';
     return Container(
       width: 50,
       height: 60,
       decoration: BoxDecoration(
-        color: const Color(0xFFFCE5A8),
-        borderRadius: BorderRadius.circular(8),
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.dividerColor),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            'PDF',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF8A6A1F),
-              letterSpacing: 0.5,
-            ),
-          ),
+          AppIcon3D(name: iconName, size: 30),
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF8A6A1F),
+              color: context.textSecondaryColor,
               letterSpacing: 0.6,
             ),
           ),

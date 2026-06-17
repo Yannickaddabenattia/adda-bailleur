@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_icon_3d.dart';
 import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
 import '../backup/backup_screen.dart';
@@ -42,10 +43,8 @@ class ReglagesScreen extends StatelessWidget {
                       : 'Interface claire',
                   style: TextStyle(color: context.textSecondaryColor),
                 ),
-                secondary: Icon(
-                  themeService.isDark
-                      ? Icons.nightlight_round
-                      : Icons.wb_sunny_rounded,
+                secondary: const Icon(
+                  Icons.nightlight_round,
                   color: AppColors.accent,
                 ),
                 value: themeService.isDark,
@@ -72,8 +71,7 @@ class ReglagesScreen extends StatelessWidget {
               ),
               Divider(height: 1, color: context.dividerColor),
               ListTile(
-                leading: const Icon(Icons.cloud_sync_outlined,
-                    color: AppColors.primary),
+                leading: const AppIcon3D(name: 'icon-cloud-sync', size: 34),
                 title: const Text('Synchronisation cloud'),
                 subtitle: Text(
                   'pCloud · Dropbox · Drive · iCloud · chiffré',

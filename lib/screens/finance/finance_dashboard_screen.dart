@@ -266,6 +266,14 @@ class _FinanceDashboardScreenState extends State<FinanceDashboardScreen> {
                   retard: retard,
                   bilanSiRecouvre: bilanSiRecouvre,
                   money: money,
+                  onRelancer: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => LoyersEnRetardScreen(
+                        year: _year,
+                        logementId: _logementId,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _KpiGrid(
@@ -647,6 +655,7 @@ class _BilanNetCard extends StatelessWidget {
   final double retard;
   final double bilanSiRecouvre;
   final NumberFormat money;
+  final VoidCallback? onRelancer;
   const _BilanNetCard({
     required this.bilan,
     required this.encaisse,
@@ -654,12 +663,13 @@ class _BilanNetCard extends StatelessWidget {
     required this.retard,
     required this.bilanSiRecouvre,
     required this.money,
+    this.onRelancer,
   });
 
   @override
   Widget build(BuildContext context) {
     final isPerte = bilan < 0;
-    final color = isPerte ? AppColors.error : AppColors.success;
+    final color = isPerte ? AppColors.brandRed : AppColors.brandGreen;
     final total = encaisse + sorties;
     final greenPct = total > 0 ? (encaisse / total).clamp(0.0, 1.0) : 0.0;
     return Container(
@@ -696,11 +706,12 @@ class _BilanNetCard extends StatelessWidget {
                   children: [
                     Icon(
                       isPerte
-                          ? Icons.arrow_drop_down_rounded
-                          : Icons.arrow_drop_up_rounded,
+                          ? Icons.trending_down_rounded
+                          : Icons.trending_up_rounded,
                       color: color,
-                      size: 18,
+                      size: 13,
                     ),
+                    const SizedBox(width: 4),
                     Text(
                       isPerte ? 'En perte' : 'En bénéfice',
                       style: TextStyle(
@@ -747,23 +758,23 @@ class _BilanNetCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              _Dot(color: AppColors.success),
+              _Dot(color: AppColors.brandGreen),
               const SizedBox(width: 6),
               Text(
                 'Encaissé · ${money.format(encaisse)}',
-                style: TextStyle(
-                  color: context.textSecondaryColor,
+                style: const TextStyle(
+                  color: AppColors.brandGreen,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const Spacer(),
-              _Dot(color: AppColors.error),
+              _Dot(color: AppColors.brandRed),
               const SizedBox(width: 6),
               Text(
                 'Sorties · ${money.format(sorties)}',
-                style: TextStyle(
-                  color: context.textSecondaryColor,
+                style: const TextStyle(
+                  color: AppColors.brandRed,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -777,6 +788,9 @@ class _BilanNetCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF4D6),
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppColors.brandAmber.withValues(alpha: 0.35),
+                ),
               ),
               child: Row(
                 children: [
@@ -822,6 +836,26 @@ class _BilanNetCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onRelancer != null) ...[
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: onRelancer,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.brandAmber,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Relancer',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -882,22 +916,22 @@ class _KpiGrid extends StatelessWidget {
             Expanded(
               child: _KpiTile(
                 icon: Icons.trending_up_rounded,
-                color: AppColors.success,
+                color: AppColors.brandGreen,
                 label: 'Encaissés',
                 value: money.format(encaisse),
                 detail: '$pctEncaisse % de l\'attendu',
-                valueColor: AppColors.success,
+                valueColor: AppColors.brandGreen,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _KpiTile(
                 icon: Icons.error_outline_rounded,
-                color: AppColors.error,
+                color: AppColors.brandRed,
                 label: 'En retard',
                 value: money.format(retard),
                 detail: '$quittancesDues quittance${quittancesDues > 1 ? 's' : ''} due${quittancesDues > 1 ? 's' : ''}',
-                valueColor: AppColors.error,
+                valueColor: AppColors.brandRed,
                 highlight: hasArrears,
                 onTap: quittancesDues > 0 ? onTapRetards : null,
               ),
@@ -910,7 +944,7 @@ class _KpiGrid extends StatelessWidget {
             Expanded(
               child: _KpiTile(
                 icon: Icons.event_outlined,
-                color: AppColors.primary,
+                color: AppColors.brandBlue,
                 label: 'Attendus',
                 value: money.format(attendus),
                 detail:
@@ -921,7 +955,7 @@ class _KpiGrid extends StatelessWidget {
             Expanded(
               child: _KpiTile(
                 icon: Icons.trending_down_rounded,
-                color: AppColors.accent,
+                color: AppColors.brandAmber,
                 label: 'Dépenses + crédits',
                 value: money.format(sorties),
                 detail: '${money.format(sortiesPerMonth)}/mois moyen',

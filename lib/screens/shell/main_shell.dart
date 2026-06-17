@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../services/theme_service.dart';
 import '../documents/documents_screen.dart';
 import '../finance/finance_dashboard_screen.dart';
 import '../home/home_screen.dart';
@@ -28,52 +26,14 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final isDark = context.isDark;
-    final themeService = context.watch<ThemeService>();
 
     return Scaffold(
       extendBody: true,
       body: IndexedStack(index: _index, children: _pages),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: _ThemeFab(
-        isDark: themeService.isDark,
-        onPressed: () => themeService.toggle(),
-      ),
       bottomNavigationBar: _BottomBar(
         index: _index,
         onSelect: (i) => setState(() => _index = i),
         isDark: isDark,
-      ),
-    );
-  }
-}
-
-class _ThemeFab extends StatelessWidget {
-  final bool isDark;
-  final VoidCallback onPressed;
-  const _ThemeFab({required this.isDark, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 60,
-      height: 60,
-      child: FloatingActionButton(
-        onPressed: onPressed,
-        backgroundColor: AppColors.accent,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        tooltip: isDark ? 'Mode jour' : 'Mode nuit',
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          transitionBuilder: (c, a) =>
-              ScaleTransition(scale: a, child: FadeTransition(opacity: a, child: c)),
-          child: Icon(
-            isDark ? Icons.wb_sunny_rounded : Icons.nightlight_round,
-            key: ValueKey(isDark),
-            color: Colors.white,
-            size: 28,
-          ),
-        ),
       ),
     );
   }
@@ -123,7 +83,6 @@ class _BottomBar extends StatelessWidget {
                 selected: index == 1,
                 onTap: () => onSelect(1),
               ),
-              const SizedBox(width: 64),
               _NavItem(
                 icon: Icons.folder_outlined,
                 label: 'Documents',
