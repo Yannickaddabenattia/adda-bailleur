@@ -1,7 +1,7 @@
 name: adda_location
 description: "ADDA Bailleur - Gestion locale de locations immobilières."
 publish_to: 'none'
-version: 1.1.0+10
+version: 1.1.1+12
 
 environment:
   sdk: ^3.11.4
@@ -120,7 +120,7 @@ msix_config:
   publisher_display_name: "ADDA BENATTIA"
   identity_name: "ADDABENATTIA.ADDABailleur"
   publisher: "CN=6C9AE533-E8BE-4BA8-B763-E570011DB53E"
-  msix_version: 1.1.0.0
+  msix_version: 1.1.1.0
   logo_path: assets/images/logo_square.png
   languages: fr-FR
   store: true
