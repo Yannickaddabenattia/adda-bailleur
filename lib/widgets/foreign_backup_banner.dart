@@ -74,6 +74,10 @@ class _ForeignBackupBannerState extends State<ForeignBackupBanner> {
           ),
           const SizedBox(width: 8),
           FilledButton(
+            // Borne la largeur : le thème global impose Size.fromHeight(52)
+            // (= largeur min INFINIE pour les boutons pleine largeur), ce qui,
+            // dans cette Row, écrasait l'Expanded du texte (rendu 1 lettre/ligne).
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
             onPressed: _busy ? null : _import,
             child: Text(_busy ? '…' : 'Importer'),
           ),
