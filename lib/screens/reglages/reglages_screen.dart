@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_icon_3d.dart';
 import '../../services/theme_service.dart';
 import '../../services/user_service.dart';
+import '../account/delete_account_action.dart';
 import '../backup/backup_screen.dart';
 import '../backup/pre_update_backups_screen.dart';
 import '../share/share_with_tenant_screen.dart';
@@ -164,6 +165,31 @@ class ReglagesScreen extends StatelessWidget {
                   AppConstants.appVersion,
                   style: TextStyle(color: context.textSecondaryColor),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _SectionLabel('COMPTE'),
+          _Card(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_forever_outlined,
+                    color: AppColors.error),
+                title: const Text(
+                  'Supprimer mon compte',
+                  style: TextStyle(
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  'Efface définitivement le profil, toutes les données et les '
+                  'sauvegardes cloud',
+                  style: TextStyle(color: context.textSecondaryColor),
+                ),
+                trailing:
+                    const Icon(Icons.chevron_right, color: AppColors.error),
+                onTap: () => confirmDeleteAccount(context),
               ),
             ],
           ),
