@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'ADDA Bailleur';
-  static const String appVersion = '1.1.0';
+  static const String appVersion = '1.1.3';
 
   /// Feature flag multi-pays (Belgique / Suisse). **OFF par défaut.**
   ///
