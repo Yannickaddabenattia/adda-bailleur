@@ -31,7 +31,11 @@ env:
 jobs:
   release-linux:
     name: Build & Release Linux x64
-    runs-on: ubuntu-latest
+    # ⚠️ Compilé sur Ubuntu 22.04 (GLIBC 2.35) volontairement : un binaire compilé
+    # sur une Ubuntu plus récente (ex. 24.04) refuse de démarrer sur les distros
+    # basées 22.04 (Zorin 17, Mint 21, Debian 12…) → « GLIBC_2.x not found ».
+    # Compiler sur 22.04 garantit la compatibilité descendante (22.04 et +).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
