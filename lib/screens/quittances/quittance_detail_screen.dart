@@ -187,7 +187,8 @@ class QuittanceDetailScreen extends StatelessWidget {
   String _filename(Quittance q, String locataireName) {
     final safe = locataireName.replaceAll(RegExp(r'[^A-Za-z0-9]'), '_');
     final period = '${q.periodYear}-${q.periodMonth.toString().padLeft(2, '0')}';
-    return 'quittance_${period}_$safe.pdf';
+    final kind = q.isPaiementPartiel ? 'recu' : 'quittance';
+    return '${kind}_${period}_$safe.pdf';
   }
 
   void _confirmDelete(BuildContext context, Quittance q) {

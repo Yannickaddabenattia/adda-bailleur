@@ -38,7 +38,9 @@ class QuittancePdfBuilder {
       await rootBundle.load('assets/fonts/Roboto-Italic.ttf'),
     );
     final doc = pw.Document(
-      title: 'Quittance ${quittance.periodLabel}',
+      title: quittance.isPaiementPartiel
+          ? 'Reçu ${quittance.periodLabel}'
+          : 'Quittance ${quittance.periodLabel}',
       author: resolvedBailleurName,
       theme: pw.ThemeData.withFont(base: base, bold: bold, italic: italic),
     );
@@ -111,7 +113,7 @@ class QuittancePdfBuilder {
           children: [
             pw.Text(
               // C3 : paiement partiel → « Reçu », jamais « Quittance ».
-              q.restantDuPeriode > 0.01
+              q.isPaiementPartiel
                   ? 'Reçu de paiement partiel'
                   : 'Quittance de loyer',
               style: pw.TextStyle(
@@ -375,7 +377,7 @@ class QuittancePdfBuilder {
               row('Versement pour ${labelMois(k)}',
                   money.format(q.versementsSupplementaires[k]!)),
             if (versementsKeys.isNotEmpty)
-              row('Total encaissé via cette quittance',
+              row('Total encaissé via ce document',
                   money.format(q.montantEncaisseTotal),
                   highlight: true),
           ],
@@ -396,6 +398,22 @@ class QuittancePdfBuilder {
     final tenantsLabel = _joinNames(tenantNames);
     final start = dateFmt.format(q.periodStart);
     final end = dateFmt.format(q.periodEnd);
+    // Art. 21 loi du 6 juillet 1989 : la quittance atteste le paiement
+    // INTÉGRAL ; un paiement partiel ne donne droit qu'à un reçu.
+    final mention = q.isPaiementPartiel
+        ? 'Je soussigné, $bailleurName, propriétaire du logement '
+            'désigné ci-dessus, reconnais avoir reçu de $tenantsLabel la '
+            'somme de ${money.format(q.montantPayePeriode)}, à valoir sur '
+            'le loyer et les charges de la période du $start au $end, '
+            'd\'un montant total de ${money.format(q.total)}. '
+            'Reste dû : ${money.format(q.restantDuPeriode)}. '
+            'Le présent document constitue un reçu de paiement partiel et '
+            'ne vaut pas quittance ; la quittance sera délivrée après '
+            'paiement intégral du loyer et des charges.'
+        : 'Je soussigné, $bailleurName, propriétaire du logement '
+            'désigné ci-dessus, donne quittance à $tenantsLabel pour la '
+            'somme de ${money.format(q.montantPayePeriode)}, au titre du '
+            'loyer et des charges pour la période du $start au $end.';
     return pw.Container(
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
@@ -406,19 +424,15 @@ class QuittancePdfBuilder {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(
-            'Je soussigné, $bailleurName, propriétaire du logement '
-            'désigné ci-dessus, donne quittance à $tenantsLabel pour la '
-            'somme de ${money.format(q.montantPayePeriode)}, au titre du '
-            'loyer et des charges pour la période du $start au $end'
-            '${q.restantDuPeriode > 0.01 ? " (reste dû : ${money.format(q.restantDuPeriode)})" : ""}.',
+            mention,
             style: const pw.TextStyle(fontSize: 11, lineSpacing: 3),
           ),
           pw.SizedBox(height: 8),
           pw.Text(
             'Document délivré gratuitement, à la demande du locataire '
             '(article 21 de la loi du 6 juillet 1989). Sa transmission par voie '
-            'dématérialisée requiert l\'accord exprès du locataire. En cas de '
-            'paiement partiel, le présent document vaut reçu et non quittance. '
+            'dématérialisée requiert l\'accord exprès du locataire. '
+            '${q.isPaiementPartiel ? '' : 'En cas de paiement partiel, le document délivré vaut reçu et non quittance. '}'
             'À conserver pendant trois ans par le locataire (article 7-1 de la '
             'loi du 6 juillet 1989).',
             style: pw.TextStyle(

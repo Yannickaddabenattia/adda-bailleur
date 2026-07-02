@@ -149,6 +149,10 @@ class Quittance {
     return diff > 0 ? diff : 0;
   }
 
+  /// Paiement partiel de la période → le document vaut reçu, pas quittance
+  /// (article 21 de la loi du 6 juillet 1989). Tolérance d'un centime.
+  bool get isPaiementPartiel => restantDuPeriode > 0.01;
+
   /// Premier jour de la période (1er du mois).
   DateTime get periodStart => DateTime(periodYear, periodMonth, 1);
 

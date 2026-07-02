@@ -35,6 +35,54 @@ double _total(Map<int, double> m) =>
     m.values.fold<double>(0, (s, v) => s + v);
 
 void main() {
+  group('Quittance.isPaiementPartiel (quittance vs reçu, art. 21 loi 1989)', () {
+    test('montantPaye null (anciennes quittances) → quittance', () {
+      expect(_q(year: 2026, month: 1).isPaiementPartiel, isFalse);
+    });
+
+    test('paiement intégral → quittance', () {
+      expect(
+        _q(year: 2026, month: 1, montantPaye: 800).isPaiementPartiel,
+        isFalse,
+      );
+    });
+
+    test('paiement partiel → reçu', () {
+      expect(
+        _q(year: 2026, month: 1, montantPaye: 300).isPaiementPartiel,
+        isTrue,
+      );
+    });
+
+    test('écart d\'arrondi ≤ 1 centime → reste une quittance', () {
+      expect(
+        _q(year: 2026, month: 1, montantPaye: 799.995).isPaiementPartiel,
+        isFalse,
+      );
+    });
+
+    test('trop-perçu (avance) → reste une quittance', () {
+      expect(
+        _q(year: 2026, month: 1, montantPaye: 900).isPaiementPartiel,
+        isFalse,
+      );
+    });
+
+    test('versements pour d\'autres mois sans effet sur la période', () {
+      // 500 € payés sur 800 dus ce mois + 300 € de régularisation d'un
+      // mois passé : le mois courant reste partiel → reçu.
+      expect(
+        _q(
+          year: 2026,
+          month: 1,
+          montantPaye: 500,
+          versements: {'2025-12': 300},
+        ).isPaiementPartiel,
+        isTrue,
+      );
+    });
+  });
+
   group('QuittanceService.encaisseParMoisLogement', () {
     Map<int, double> run(List<Quittance> qs, {int year = 2026}) =>
         QuittanceService.encaisseParMoisLogement(
